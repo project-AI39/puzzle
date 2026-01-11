@@ -16,13 +16,17 @@ class Button:
         font_size=24,
         bg_color=COLOR_GRAY,
         text_color=COLOR_WHITE,
+        font=None,
     ):
         self.rect = pygame.Rect(rect)
         self.text = text
         self.callback = callback
         self.bg_color = bg_color
         self.text_color = text_color
-        self.font = pygame.font.SysFont("Arial", font_size)
+        if font:
+            self.font = font
+        else:
+            self.font = pygame.font.SysFont("Arial", font_size)
         self.rendered_text = self.font.render(self.text, True, self.text_color)
         self.text_rect = self.rendered_text.get_rect(center=self.rect.center)
         self.hovered = False

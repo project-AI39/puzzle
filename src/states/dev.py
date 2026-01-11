@@ -1,260 +1,356 @@
 # d:/game/puzzle/src/states/dev.py
 # 開発者モードの状態
-# ステージ作成やデバッグ機能を提供する
-# RELEVANT FILES: src/const.py, src/core/state_machine.py, src/ui/widgets.py, src/game/generator.py, src/game/map.py
+# マップエディタ機能を提供する（自動生成は廃止）
+# RELEVANT FILES: src/const.py, src/core/state_machine.py, src/ui/widgets.py, src/game/map.py
 
 import pygame
-import threading
 import json
 import os
 import datetime
 from src.core.state_machine import State
-from src.ui.widgets import Button, TextInput
-from src.game.generator import Generator
+from src.ui.widgets import Button
 from src.game.map import TileMap
-from src.const import SCREEN_WIDTH, SCREEN_HEIGHT, COLOR_BLACK, COLOR_BLUE, COLOR_WHITE
+from src.const import (
+    SCREEN_WIDTH,
+    SCREEN_HEIGHT,
+    COLOR_BLACK,
+    COLOR_BLUE,
+    COLOR_WHITE,
+    COLOR_RED,
+    COLOR_GREEN,
+    TILE_NORMAL,
+    TILE_NULL,
+    TILE_GOAL,
+    TILE_PIT,
+    TILE_WARP,
+    TILE_UP,
+    TILE_DOWN,
+    TILE_LEFT,
+    TILE_RIGHT,
+)
 
 
 class DevState(State):
     def __init__(self, manager):
         super().__init__(manager)
-        self.font = pygame.font.SysFont("Arial", 24)
+        self.font = pygame.font.SysFont("Arial", 32)
+        self.small_font = pygame.font.SysFont("Arial", 24)
 
-        # UI要素の初期化 (左側パネルレイアウト)
-        panel_center_x = 300  # 左側の中心X座標
+        # UIレイアウト
+        self.panel_width = 500
+        center_x = self.panel_width // 2
 
-        # 1. パラメータ入力欄
-        self.input_label = "Params (w=5,h=5,p=1...)"
-        self.params_input = TextInput(
-            rect=(panel_center_x - 200, 100, 400, 40), initial_text="w=5,h=5,p=1"
+        # --- ボタン定義 ---
+
+        # 1. 操作系
+        self.clear_btn = Button(
+            rect=(center_x - 100, 50, 200, 40),
+            text="Clear Map",
+            callback=self._on_clear,
         )
-
-        # 2. 生成ボタン
-        self.generate_btn = Button(
-            rect=(panel_center_x - 100, 160, 200, 50),
-            text="Generate Map",
-            callback=self._on_generate,
-        )
-
-        # 3. 保存ボタン
         self.save_btn = Button(
-            rect=(panel_center_x - 100, 240, 200, 50),
-            text="Save Map",
+            rect=(center_x - 100, 110, 200, 40),
+            text="Save JSON",
             callback=self._on_save,
         )
-
-        # 4. 答えをプレイボタン (Test Play -> Play Answer)
-        self.play_answer_btn = Button(
-            rect=(panel_center_x - 100, 320, 200, 50),
-            text="Play Answer",
-            callback=self._on_play_answer,
+        self.test_play_btn = Button(
+            rect=(center_x - 100, 170, 200, 40),
+            text="Test Play",
+            callback=self._on_test_play,
         )
 
-        self.message = ""
+        # 2. ブラシ選択 (パレット)
+        self.brushes = [
+            {"label": "Wall", "value": TILE_NULL, "type": "tile"},
+            {"label": "Floor", "value": TILE_NORMAL, "type": "tile"},
+            {"label": "Goal", "value": TILE_GOAL, "type": "tile"},
+            {"label": "Pit", "value": TILE_PIT, "type": "tile"},
+            {"label": "Arrow U", "value": TILE_UP, "type": "tile"},
+            {"label": "Arrow D", "value": TILE_DOWN, "type": "tile"},
+            {"label": "Arrow L", "value": TILE_LEFT, "type": "tile"},
+            {"label": "Arrow R", "value": TILE_RIGHT, "type": "tile"},
+            {"label": "Warp 0", "value": "00800", "type": "tile"},
+            {"label": "Warp 1", "value": "00801", "type": "tile"},
+            {"label": "Warp 2", "value": "00802", "type": "tile"},
+            {"label": "Warp 3", "value": "00803", "type": "tile"},
+            {"label": "Player U", "value": "up", "type": "player"},
+            {"label": "Player D", "value": "down", "type": "player"},
+            {"label": "Player L", "value": "left", "type": "player"},
+            {"label": "Player R", "value": "right", "type": "player"},
+        ]
+
+        self.brush_buttons = []
+        start_y = 250
+        btn_h = 40
+        btn_w = 120
+        cols = 3
+        margin = 10
+
+        for i, brush in enumerate(self.brushes):
+            r = i // cols
+            c = i % cols
+            bx = 20 + c * (btn_w + margin)
+            by = start_y + r * (btn_h + margin)
+            btn = Button(
+                rect=(bx, by, btn_w, btn_h),
+                text=brush["label"],
+                callback=lambda b=brush: self._set_brush(b),
+                font=self.small_font,
+            )
+            self.brush_buttons.append(btn)
+
+        self.current_brush = self.brushes[1]  # Default: Floor
+
+        # マッセージ
+        self.message = "Map Editor: Paint tiles freely."
         self.message_timer = 0
 
-        # 生成関連
-        self.generator = Generator()
-        self.is_generating = False
-        self.generated_result = None  # {"map_data": ..., "players": ..., "answer": ...}
-        self.gen_thread = None
-        self.preview_map = None  # TileMap instance
+        # マップデータ管理
+        self.map_width = 15
+        self.map_height = 10
+        self.map_data = [
+            [TILE_NULL for _ in range(self.map_width)] for _ in range(self.map_height)
+        ]
+        # プレイヤー管理: [{"grid_x":, "grid_y":, "direction": ...}]
+        self.placed_players = []
 
-    def _on_generate(self):
-        """生成ボタンのコールバック"""
-        if self.is_generating:
-            return
+        # TileMapインスタンス
+        self.tile_map = TileMap(self.map_data)
 
-        params_text = self.params_input.text
-        # パラメータ解析 (簡易: w=5,h=5,p=1,warp=0,arrow=0)
-        kwargs = {
-            "width": 5,
-            "height": 5,
-            "num_players": 1,
-            "num_warp_pairs": 0,
-            "num_arrows": 0,
-        }
+    def _set_brush(self, brush):
+        self.current_brush = brush
+        self.message = f"Brush: {brush['label']}"
 
-        try:
-            parts = params_text.split(",")
-            for part in parts:
-                if "=" in part:
-                    k, v = part.split("=")
-                    k = k.strip().lower()
-                    v = int(v.strip())
-                    if k in ["w", "width"]:
-                        kwargs["width"] = v
-                    elif k in ["h", "height"]:
-                        kwargs["height"] = v
-                    elif k in ["p", "player", "players"]:
-                        kwargs["num_players"] = v
-                    elif k in ["warp", "warps"]:
-                        kwargs["num_warp_pairs"] = v
-                    elif k in ["arrow", "arrows"]:
-                        kwargs["num_arrows"] = v
-        except Exception as e:
-            self._show_message(f"Param Error: {e}")
-            return
+    def _on_clear(self):
+        self.map_data = [
+            [TILE_NULL for _ in range(self.map_width)] for _ in range(self.map_height)
+        ]
+        self.placed_players = []
+        self._refresh_tile_map()
+        self.message = "Map Cleared."
 
-        self.is_generating = True
-        self._show_message("Generating... Please wait.")
-        self.generated_result = None
-        self.preview_map = None
-
-        # スレッドで実行
-        self.gen_thread = threading.Thread(target=self._run_generator, kwargs=kwargs)
-        self.gen_thread.start()
-
-    def _run_generator(self, **kwargs):
-        """別スレッドで実行される生成処理"""
-        result = self.generator.generate_map(**kwargs)
-        self.generated_result = result
-        self.is_generating = False
+    def _refresh_tile_map(self):
+        """TileMapの再生成"""
+        self.tile_map = TileMap(self.map_data)
+        self.tile_map.placed_pieces = []
+        for p in self.placed_players:
+            self.tile_map.place_piece(
+                p["grid_x"], p["grid_y"], {"direction": p["direction"]}
+            )
 
     def _on_save(self):
-        """保存ボタンのコールバック"""
-        if not self.generated_result:
-            self._show_message("No map to save!")
-            return
-
         try:
             save_dir = "d:/game/puzzle/create_stage"
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
 
-            # ファイル名生成 (stage_YYYYMMDD_HHMMSS.json)
             now = datetime.datetime.now()
             filename = f"stage_{now.strftime('%Y%m%d_%H%M%S')}.json"
             filepath = os.path.join(save_dir, filename)
 
+            # 手動配置なので players と answer に同じものを入れておく
+            players_export = [
+                {"direction": p["direction"]} for p in self.placed_players
+            ]
+            answer_export = []
+            for p in self.placed_players:
+                answer_export.append(
+                    {
+                        "grid_x": p["grid_x"],
+                        "grid_y": p["grid_y"],
+                        "piece": {"direction": p["direction"]},
+                    }
+                )
+
+            data = {
+                "map_data": self.map_data,
+                "players": players_export,
+                "answer": answer_export,
+            }
+
             with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(self.generated_result, f, indent=2)
-
-            print(f"Map saved to {filepath}")
-            self._show_message("Map Saved Successfully!")
-
+                json.dump(data, f, indent=2)
+            self.message = "Map Saved!"
         except Exception as e:
-            print(f"Save Error: {e}")
-            self._show_message(f"Save Error: {e}")
+            print(e)
+            self.message = "Save Error."
 
-    def _on_play_answer(self):
-        """答えをプレイボタンのコールバック"""
-        if not self.generated_result:
-            self._show_message("No map to play!")
+    def _on_test_play(self):
+        if not self.placed_players:
+            self.message = "No players placed!"
             return
 
-        print("Starting Answer Play...")
+        players_export = [{"direction": p["direction"]} for p in self.placed_players]
+        answer_export = []
+        for p in self.placed_players:
+            answer_export.append(
+                {
+                    "grid_x": p["grid_x"],
+                    "grid_y": p["grid_y"],
+                    "piece": {"direction": p["direction"]},
+                }
+            )
+
+        # テストプレイ用データ
+        stage_data = {
+            "map_data": self.map_data,
+            "players": players_export,
+            "answer": answer_export,
+            # "auto_play": True  # 手動プレイがいいのでFalse (デフォルト)
+        }
+
+        print("Starting Test Play...")
         from src.states.play import PlayState
 
-        # 生成されたマップデータを渡してPlayStateに遷移
-        self.manager.change_state(
-            PlayState(self.manager, stage_data=self.generated_result)
-        )
-
-    def _show_message(self, msg):
-        self.message = msg
-        self.message_timer = 180  # 3秒
+        self.manager.change_state(PlayState(self.manager, stage_data=stage_data))
 
     def enter(self):
-        print("開発者モードに遷移しました")
+        print("Dev Mode Entered")
+        pygame.key.set_repeat(200, 50)
+
+    def leave(self):
+        pygame.key.set_repeat()
 
     def handle_event(self, event):
-        # UIイベント処理
-        self.params_input.handle_event(event)
+        self.clear_btn.handle_event(event)
+        self.save_btn.handle_event(event)
+        self.test_play_btn.handle_event(event)
+        for btn in self.brush_buttons:
+            btn.handle_event(event)
 
-        if not self.is_generating:
-            self.generate_btn.handle_event(event)  # 生成中はボタン無効
-            self.save_btn.handle_event(event)
-            self.play_answer_btn.handle_event(event)
+        # マップクリック処理 (ペイント機能)
+        # MOUSEBUTTONDOWN または LEFT-CLICK-DRAG
+        is_click = event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
+        is_drag = event.type == pygame.MOUSEMOTION and event.buttons[0]
+
+        if is_click or is_drag:
+            mx, my = event.pos
+            # マップエリア内か判定 (右側)
+            if mx > self.panel_width:
+                # 座標変換
+                area_w = SCREEN_WIDTH - self.panel_width
+                map_pixel_w = self.tile_map.width
+                map_pixel_h = self.tile_map.height
+
+                # offsetはdraw実行時に決まるが、ここでは計算して使う
+                # DevState.drawと同じロジックならズレない
+                offset_x = self.panel_width + (area_w - map_pixel_w) // 2
+                offset_y = (SCREEN_HEIGHT - map_pixel_h) // 2
+
+                # TileMap.get_grid_posは内部状態(last_offset)を使うので
+                # 前回draw時のオフセットが使われる。
+                # 画面サイズが変わらなければ問題ない。
+
+                gx, gy = self.tile_map.get_grid_pos(mx, my)
+
+                if 0 <= gx < self.map_width and 0 <= gy < self.map_height:
+                    # 左クリック(1)として処理
+                    self._apply_brush(gx, gy, 1)
 
         if event.type == pygame.KEYDOWN:
-            if not self.params_input.active:
-                if event.key == pygame.K_d:
-                    # 生成中なら中断リクエスト
-                    if self.is_generating:
-                        self.generator.cancel()
+            if event.key == pygame.K_d:
+                from src.states.attract import AttractState
 
-                    from src.states.attract import AttractState
+                self.manager.change_state(AttractState(self.manager))
 
-                    self.manager.change_state(AttractState(self.manager))
+    def _apply_brush(self, gx, gy, button):
+        if button != 1:
+            return
+
+        tile_changed = False
+
+        if self.current_brush["type"] == "tile":
+            current_val = self.map_data[gy][gx]
+            new_val = self.current_brush["value"]
+
+            if current_val != new_val:
+                self.map_data[gy][gx] = new_val
+                # タイルが変わったらその上のプレイヤー削除 (Wall/Pit/Loop対策など、基本は置いたタイルの整合性を取る)
+                # 特にNULL/PITにした場合はプレイヤー落とす
+                if new_val == TILE_NULL or new_val == TILE_PIT:
+                    self.placed_players = [
+                        p
+                        for p in self.placed_players
+                        if not (p["grid_x"] == gx and p["grid_y"] == gy)
+                    ]
+                tile_changed = True
+
+        elif self.current_brush["type"] == "player":
+            direction = self.current_brush["value"]
+
+            # 既に同じ場所に同じ向きのプレイヤーがいれば何もしない（無駄な更新防止）
+            existing = [
+                p
+                for p in self.placed_players
+                if p["grid_x"] == gx and p["grid_y"] == gy
+            ]
+            if existing:  # 既に誰かいる
+                # 向き更新なら実行
+                if existing[0]["direction"] != direction:
+                    existing[0]["direction"] = direction
+                    tile_changed = True
+            else:
+                # 追加
+                self.placed_players.append(
+                    {"grid_x": gx, "grid_y": gy, "direction": direction}
+                )
+                # その下のタイルをNormalにする
+                if self.map_data[gy][gx] == TILE_NULL:
+                    self.map_data[gy][gx] = TILE_NORMAL
+                tile_changed = True
+
+        if tile_changed:
+            self._refresh_tile_map()
 
     def update(self, dt):
-        self.params_input.update(dt)
-
         if self.message_timer > 0:
             self.message_timer -= 1
             if self.message_timer <= 0:
                 self.message = ""
 
-        # 生成完了・失敗検知（スレッド終了後）
-        if self.gen_thread and not self.gen_thread.is_alive():
-            if self.generated_result:
-                if self.message == "Generating... Please wait.":
-                    self._show_message("Generation Success!")
-
-                # プレビュー作成
-                if not self.preview_map:
-                    self.preview_map = TileMap(self.generated_result["map_data"])
-            else:
-                if self.message == "Generating... Please wait.":
-                    self._show_message("Generation Failed (No unique solution).")
-            self.gen_thread = None
-
     def draw(self, surface):
         surface.fill(COLOR_BLACK)
 
-        panel_center_x = 300
+        # パネル背景
+        pygame.draw.rect(surface, (30, 30, 30), (0, 0, self.panel_width, SCREEN_HEIGHT))
 
-        # タイトル
-        title_surf = self.font.render("DEVELOPER MODE", True, COLOR_BLUE)
-        title_rect = title_surf.get_rect(center=(panel_center_x, 30))
-        surface.blit(title_surf, title_rect)
-
-        # ラベル
-        label_surf = self.font.render(self.input_label, True, COLOR_WHITE)
-        label_rect = label_surf.get_rect(center=(panel_center_x, 80))
-        surface.blit(label_surf, label_rect)
-
-        # UI描画
-        self.params_input.draw(surface)
-        self.generate_btn.draw(surface)
+        self.clear_btn.draw(surface)
         self.save_btn.draw(surface)
-        self.play_answer_btn.draw(surface)
+        self.test_play_btn.draw(surface)
 
-        # ステータスメッセージ
-        if self.message:
-            color = (0, 255, 0) if "Success" in self.message else (255, 255, 255)
-            if "Failed" in self.message or "Error" in self.message:
-                color = (255, 0, 0)
-            msg_surf = self.font.render(self.message, True, color)
-            msg_rect = msg_surf.get_rect(center=(panel_center_x, 450))
-            surface.blit(msg_surf, msg_rect)
-
-        # プレビュー (右側エリア中央)
-        if self.preview_map:
-            # プレビューエリア：X=600 ~ 1900, Y=0 ~ 1000
-            area_start_x = 600
-            area_width = SCREEN_WIDTH - area_start_x
-
-            map_w = self.preview_map.width
-            map_h = self.preview_map.height
-
-            preview_x = area_start_x + (area_width - map_w) // 2
-            preview_y = (SCREEN_HEIGHT - map_h) // 2
-
-            # 枠線
-            pygame.draw.rect(
-                surface,
-                (50, 50, 50),
-                (preview_x - 5, preview_y - 5, map_w + 10, map_h + 10),
-            )
-
-            # マップ描画
-            self.preview_map.draw(surface, preview_x, preview_y)
-
-        # 戻るガイド
-        guide_surf = self.font.render(
-            "Press 'D' (when not typing) to Return", True, (100, 100, 100)
+        # ブラシパレット
+        brush_label = self.font.render(
+            f"Current: {self.current_brush['label']}", True, COLOR_GREEN
         )
-        guide_rect = guide_surf.get_rect(center=(panel_center_x, SCREEN_HEIGHT - 30))
-        surface.blit(guide_surf, guide_rect)
+        surface.blit(brush_label, (20, 210))
+
+        for btn in self.brush_buttons:
+            if (
+                "label" in self.current_brush
+                and btn.text == self.current_brush["label"]
+            ):
+                pygame.draw.rect(surface, COLOR_BLUE, btn.rect, 2)
+            btn.draw(surface)
+
+        # メッセージ
+        msg_surf = self.font.render(self.message, True, COLOR_WHITE)
+        surface.blit(msg_surf, (20, SCREEN_HEIGHT - 50))
+
+        # マップ描画
+        area_w = SCREEN_WIDTH - self.panel_width
+        map_pixel_w = self.tile_map.width
+        map_pixel_h = self.tile_map.height
+
+        offset_x = self.panel_width + (area_w - map_pixel_w) // 2
+        offset_y = (SCREEN_HEIGHT - map_pixel_h) // 2
+
+        pygame.draw.rect(
+            surface,
+            (50, 50, 50),
+            (offset_x - 5, offset_y - 5, map_pixel_w + 10, map_pixel_h + 10),
+        )
+
+        self.tile_map.draw(surface, offset_x, offset_y)
+
+        guide = self.small_font.render("Press 'D' to Quit", True, (100, 100, 100))
+        surface.blit(guide, (20, SCREEN_HEIGHT - 20))

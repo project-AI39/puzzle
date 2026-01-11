@@ -4,8 +4,8 @@
 # RELEVANT FILES: src/app.py, src/states/attract.py
 
 # 画面サイズ
-SCREEN_WIDTH = 1900
-SCREEN_HEIGHT = 1000
+SCREEN_WIDTH = 1920
+SCREEN_HEIGHT = 1080
 FPS = 60
 
 # 色定義 (R, G, B)
@@ -53,4 +53,5 @@ GAME_STATE_PLACING = "placing"
 GAME_STATE_SIMULATING = "simulating"
 
 # 描画設定
-TILE_SIZE = 64  # タイルの描画サイズ (px)
+TILE_SIZE = 96  # タイルの描画サイズ (px)
+INVENTORY_WIDTH = 250  # インベントリ幅

@@ -50,14 +50,18 @@ class TileMap:
         # 32x32の画像を読み込み、TILE_SIZE (64x64) にスケールする
         image_files = {
             TILE_NULL: "null_tile.png",
-            TILE_PIT: "null_tile.png",
+            TILE_PIT: "pit.png",  # 画像がない場合は黒背景になる
             TILE_NORMAL: "normal0_tile.png",
             TILE_GOAL: "goal0_tile.png",
             TILE_UP: "uparrow0_tile.png",
             TILE_DOWN: "downarrow0_tile.png",
             TILE_RIGHT: "rightarrow0_tile.png",
             TILE_LEFT: "leftarrow0_tile.png",
-            TILE_WARP: "teleport0_tile.png",
+            # TILE_WARP (00800) is base, but we load teleport0-3 explicitly
+            "00800": "teleport0_tile.png",
+            "00801": "teleport1_tile.png",
+            "00802": "teleport2_tile.png",
+            "00803": "teleport3_tile.png",
         }
 
         for tile_id, filename in image_files.items():
@@ -136,8 +140,9 @@ class TileMap:
         for r, row in enumerate(self.map_data):
             for c, tile_id in enumerate(row):
                 draw_id = tile_id
-                if tile_id.startswith("008"):
-                    draw_id = TILE_WARP
+                # Warp Special Handling removed: "008xx" is mapped directly in images
+                # if tile_id.startswith("008"):
+                #     draw_id = TILE_WARP
 
                 img = self.images.get(draw_id)
                 if img:

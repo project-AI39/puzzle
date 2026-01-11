@@ -17,6 +17,7 @@ from src.const import (
     SIM_STEP_DELAY,
     SIM_ANIM_DURATION,
     TILE_SIZE,
+    INVENTORY_WIDTH,
 )
 from src.game.loader import StageLoader
 from src.game.map import TileMap
@@ -71,7 +72,7 @@ class PlayState(State):
                 stage_data = self.custom_stage_data
                 self.tile_map = TileMap(stage_data["map_data"])
 
-                # "answer" (正解配置) が含まれている場合は自動再生モード
+                # "answer" (正解配置/初期配置) が含まれている場合
                 if "answer" in stage_data:
                     # インベントリは空にする（全て配置済み）
                     self.inventory = Inventory([])
@@ -81,9 +82,14 @@ class PlayState(State):
                             p_data["grid_x"], p_data["grid_y"], p_data["piece"]
                         )
 
-                    # シミュレーション即開始
-                    print("Auto-playing answer...")
-                    self._start_simulation()
+                    # auto_playフラグがあればシミュレーション開始
+                    if stage_data.get("auto_play", False):
+                        print("Auto-playing answer...")
+                        self._start_simulation()
+                    else:
+                        # 手動プレイ（配置状態からスタート）
+                        print("Manual Play from Setup")
+                        self.game_state = GAME_STATE_PLACING
                 else:
                     # 通常のテストプレイ（手動配置）
                     self.inventory = Inventory(stage_data["players"])
@@ -236,9 +242,6 @@ class PlayState(State):
 
     def draw(self, surface):
         surface.fill(COLOR_BLACK)
-
-        # レイアウト定数 (簡易)
-        INVENTORY_WIDTH = 120
 
         if self.tile_map:
             # マップ描画エリア (画面幅 - インベントリ幅)

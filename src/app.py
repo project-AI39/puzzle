@@ -16,7 +16,10 @@ class GameApp:
     def __init__(self):
         # Pygameの初期化
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        # フルスクリーン起動 (SCALEDで解像度維持)
+        self.screen = pygame.display.set_mode(
+            (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN | pygame.SCALED
+        )
         pygame.display.set_caption(STRING_TITLE)
         self.clock = pygame.time.Clock()
         self.state_machine = StateMachine(self)
@@ -32,6 +35,9 @@ class GameApp:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        self.running = False
                 self.state_machine.handle_event(event)
 
             self.state_machine.update(dt)
