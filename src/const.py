@@ -4,8 +4,8 @@
 # RELEVANT FILES: src/app.py, src/states/attract.py
 
 # 画面サイズ
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
+SCREEN_WIDTH = 1900
+SCREEN_HEIGHT = 1000
 FPS = 60
 
 # 色定義 (R, G, B)

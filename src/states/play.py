@@ -16,6 +16,7 @@ from src.const import (
     GAME_STATE_SIMULATING,
     SIM_STEP_DELAY,
     SIM_ANIM_DURATION,
+    TILE_SIZE,
 )
 from src.game.loader import StageLoader
 from src.game.map import TileMap
@@ -24,7 +25,7 @@ from src.game.simulator import Simulator
 
 
 class PlayState(State):
-    def __init__(self, manager):
+    def __init__(self, manager, stage_data=None):
         super().__init__(manager)
         self.font = pygame.font.SysFont("Arial", 48)
         self.inactivity_timer = 0
@@ -35,6 +36,9 @@ class PlayState(State):
         self.tile_map = None
         self.inventory = None
         self.current_level = 1
+
+        # テストプレイ用データ
+        self.custom_stage_data = stage_data
 
         # ドラッグ＆ドロップ操作用
         self.held_piece = None  # 現在掴んでいる駒
@@ -62,9 +66,33 @@ class PlayState(State):
 
         # ステージ読み込み（リセットも兼ねてここで読み込む）
         try:
-            stage_data = self.loader.load_stage(self.current_level)
-            self.tile_map = TileMap(stage_data["map_data"])
-            self.inventory = Inventory(stage_data["players"])
+            if self.custom_stage_data:
+                # テストプレイ用データを使用
+                stage_data = self.custom_stage_data
+                self.tile_map = TileMap(stage_data["map_data"])
+
+                # "answer" (正解配置) が含まれている場合は自動再生モード
+                if "answer" in stage_data:
+                    # インベントリは空にする（全て配置済み）
+                    self.inventory = Inventory([])
+                    # 駒を配置
+                    for p_data in stage_data["answer"]:
+                        self.tile_map.place_piece(
+                            p_data["grid_x"], p_data["grid_y"], p_data["piece"]
+                        )
+
+                    # シミュレーション即開始
+                    print("Auto-playing answer...")
+                    self._start_simulation()
+                else:
+                    # 通常のテストプレイ（手動配置）
+                    self.inventory = Inventory(stage_data["players"])
+
+            else:
+                stage_data = self.loader.load_stage(self.current_level)
+                self.tile_map = TileMap(stage_data["map_data"])
+                self.inventory = Inventory(stage_data["players"])
+
         except Exception as e:
             print(f"Error loading stage {self.current_level}: {e}")
 
@@ -175,11 +203,22 @@ class PlayState(State):
                 # 前回の結果判定をここで行う（アニメーション終了後）
                 if self.sim_last_result == "WIN":
                     print(f"Level {self.current_level} Cleared!")
+
+                    if self.custom_stage_data:
+                        # テストプレイ完了 -> 開発者モードに戻る
+                        from src.states.dev import DevState
+
+                        print("Test Play Cleared! Returning to Dev Mode.")
+                        self.manager.change_state(DevState(self.manager))
+                        return
+
                     self.current_level += 1
                     self.enter()
                     return
                 elif self.sim_last_result == "LOSE":
                     print("Example Failed... Resetting.")
+                    # テストプレイで失敗（答え再生なのに失敗？）
+                    # まあリセットして再試行できるようにenter()を呼ぶ
                     self.enter()
                     return
 

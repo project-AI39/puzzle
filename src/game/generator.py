@@ -39,7 +39,6 @@ class Generator:
         start_time = time.time()
 
         # プレイヤーの向きテンプレート（ランダムに決定）
-        # ※ユーザー指定可能にする場合は引数を増やす
         directions = ["up", "down", "left", "right"]
 
         # 試行ループ
@@ -58,17 +57,14 @@ class Generator:
             # --- 1. ベースマップ作成 ---
             # 外周をNULL（壁）、内部をNORMALで埋める
             map_data = [[TILE_NORMAL for _ in range(width)] for _ in range(height)]
-            # 簡易的に、外周1マスを壁にするか、あるいはwidth/heightをプレイ可能エリアとするか。
-            # 仕様変更が面倒なので、width/heightは「グリッドサイズ」とし、
-            # ランダムに穴(NULL)をあける程度にする。
-            # 今回はシンプルに「全マスNORMAL」からスタートし、少し穴をあける。
+            # 簡易的に、グリッド全体をNORMALで初期化
 
             available_cells = [(c, r) for r in range(height) for c in range(width)]
 
             # --- 2. ゴール配置 ---
             # プレイヤー数と同じ数のゴールが必要
             if len(available_cells) < num_players:
-                continue  # 狭すぎる
+                continue
 
             goals = random.sample(available_cells, num_players)
             for gx, gy in goals:
@@ -77,20 +73,12 @@ class Generator:
 
             # --- 3. ギミック配置 ---
             # ワープ (ペアで配置)
-            # TILE_WARP は "00800" だが、ペアごとにIDを変える必要があるなら "00801" 等にする仕様。
-            # 仕様0.md: "id-00800を２つと id-00801を２つ配置することで..."
-            # src/game/map.pyの読み込みロジックやSimulatorは、"008" で始まるものをワープとみなしている。
-            # map.py: startswith("008")
-            # simulator.py: startswith("008")
-            # ペア判定: find_warp_target は "同じID" を探す。
-            # なので、ペアAは "00800", ペアBは "00801" とする必要がある。
-
             curr_warp_id = 0
             for _ in range(num_warp_pairs):
                 if len(available_cells) < 2:
                     break
                 pair_pos = random.sample(available_cells, 2)
-                warp_val = f"008{curr_warp_id:02d}"  # "00800", "00801"...
+                warp_val = f"008{curr_warp_id:02d}"
                 for wx, wy in pair_pos:
                     map_data[wy][wx] = warp_val
                     available_cells.remove((wx, wy))
@@ -118,17 +106,17 @@ class Generator:
 
             # 解が「ちょうど1つ」かチェック
             try:
-                count = solver.count_solutions(limit=2)
-                if count == 1:
+                solutions = solver.solve(limit=2)
+                if len(solutions) == 1:
                     print(
                         f"Generator: Success! Attempts={attempts}, Time={time.time() - start_time:.2f}s"
                     )
-                    # プレイヤーの正解位置（解）まではSolverから返していない。
-                    # 必要ならSolver.count_solutionsを改造して解自体を返すようにするが、
-                    # Generatorの戻り値としては「マップ」と「プレイヤー情報（向き）」があればよい。
-                    # 「答え」を表示するためには、Solverが解（座標）も返すと便利。
-                    # とりあえず今はマップとプレイヤー情報を返す。
-                    return {"map_data": map_data, "players": players_templates}
+                    # 解（配置情報）を含めて返す
+                    return {
+                        "map_data": map_data,
+                        "players": players_templates,  # インベントリ用（未配置）
+                        "answer": solutions[0],  # テストプレイ用（配置済み正解）
+                    }
             except Exception as e:
                 print(f"Solver Error: {e}")
 
