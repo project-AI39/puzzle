@@ -16,6 +16,7 @@ COLOR_GREEN = (0, 255, 0)
 COLOR_BLUE = (0, 0, 255)
 COLOR_YELLOW = (255, 255, 0)
 COLOR_GRAY = (128, 128, 128)
+COLOR_DARK_GRAY = (64, 64, 64)  # インベントリ背景用
 
 # 状態名（ステート）
 STATE_ATTRACT = "ATTRACT"
@@ -31,3 +32,16 @@ CONFIRM_TIMEOUT = 10000  # コンティニュー確認のタイムアウト (10�
 MOUSE_MOVE_THRESHOLD = 100  # マウス移動検知の閾値 (ピクセル移動量の累積など)
 
 STRING_TITLE = "Puzzle Game"
+
+# タイルID
+TILE_NULL = "00100"  # 奈落
+TILE_NORMAL = "00200"  # 通常マス
+TILE_GOAL = "00300"  # ゴール
+TILE_UP = "00400"  # 上矢印
+TILE_DOWN = "00500"  # 下矢印
+TILE_RIGHT = "00600"  # 右矢印
+TILE_LEFT = "00700"  # 左矢印
+TILE_WARP = "00800"  # ワープ
+
+# 描画設定
+TILE_SIZE = 64  # タイルの描画サイズ (px)
