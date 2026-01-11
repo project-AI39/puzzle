@@ -34,7 +34,8 @@ MOUSE_MOVE_THRESHOLD = 100  # マウス移動検知の閾値 (ピクセル移動
 STRING_TITLE = "Puzzle Game"
 
 # タイルID
-TILE_NULL = "00100"  # 奈落
+TILE_NULL = "00000"  # 壁・無効エリア
+TILE_PIT = "00100"  # 奈落
 TILE_NORMAL = "00200"  # 通常マス
 TILE_GOAL = "00300"  # ゴール
 TILE_UP = "00400"  # 上矢印
@@ -42,6 +43,13 @@ TILE_DOWN = "00500"  # 下矢印
 TILE_RIGHT = "00600"  # 右矢印
 TILE_LEFT = "00700"  # 左矢印
 TILE_WARP = "00800"  # ワープ
+
+# シミュレーション設定
+SIM_STEP_DELAY = 500  # ms
+
+# ゲーム状態
+GAME_STATE_PLACING = "placing"
+GAME_STATE_SIMULATING = "simulating"
 
 # 描画設定
 TILE_SIZE = 64  # タイルの描画サイズ (px)

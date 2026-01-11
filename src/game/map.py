@@ -15,6 +15,7 @@ from src.const import (
     TILE_RIGHT,
     TILE_LEFT,
     TILE_WARP,
+    TILE_PIT,
 )
 
 
@@ -49,6 +50,7 @@ class TileMap:
         # 32x32の画像を読み込み、TILE_SIZE (64x64) にスケールする
         image_files = {
             TILE_NULL: "null_tile.png",
+            TILE_PIT: "null_tile.png",
             TILE_NORMAL: "normal0_tile.png",
             TILE_GOAL: "goal0_tile.png",
             TILE_UP: "uparrow0_tile.png",
@@ -144,3 +146,7 @@ class TileMap:
                 x = offset_x + grid_x * TILE_SIZE
                 y = offset_y + grid_y * TILE_SIZE
                 surface.blit(img, (x, y))
+
+    def reset_pieces(self):
+        """配置された駒をリセット"""
+        self.placed_pieces = []

@@ -12,10 +12,14 @@ from src.const import (
     COLOR_BLACK,
     PLAY_TIMEOUT,
     COLOR_WHITE,
+    GAME_STATE_PLACING,
+    GAME_STATE_SIMULATING,
+    SIM_STEP_DELAY,
 )
 from src.game.loader import StageLoader
 from src.game.map import TileMap
 from src.game.inventory import Inventory
+from src.game.simulator import Simulator
 
 
 class PlayState(State):
@@ -37,12 +41,21 @@ class PlayState(State):
         self.drag_start_pos = (0, 0)  # ドラッグ開始位置
         self.drag_threshold = 5  # ドラッグとみなす移動量
 
+        # シミュレーション用
+        self.game_state = GAME_STATE_PLACING
+        self.simulator = None
+        self.sim_timer = 0
+
     def enter(self):
         print("プレイモードに遷移しました")
         self.inactivity_timer = 0
         self.last_mouse_pos = pygame.mouse.get_pos()
         self.held_piece = None
         self.is_dragging = False
+
+        self.game_state = GAME_STATE_PLACING
+        self.simulator = None
+        self.sim_timer = 0
 
         # ステージ読み込み（リセットも兼ねてここで読み込む）
         try:
@@ -57,16 +70,19 @@ class PlayState(State):
         if event.type == pygame.MOUSEMOTION:
             self.inactivity_timer = 0
 
-            # ドラッグ判定
-            if self.held_piece and not self.is_dragging:
-                dx = event.pos[0] - self.drag_start_pos[0]
-                dy = event.pos[1] - self.drag_start_pos[1]
-                if (dx * dx + dy * dy) > self.drag_threshold**2:
-                    self.is_dragging = True
+            if self.game_state == GAME_STATE_PLACING:
+                # ドラッグ判定
+                if self.held_piece and not self.is_dragging:
+                    dx = event.pos[0] - self.drag_start_pos[0]
+                    dy = event.pos[1] - self.drag_start_pos[1]
+                    if (dx * dx + dy * dy) > self.drag_threshold**2:
+                        self.is_dragging = True
 
         # マウスボタンダウン (掴む処理)
         if event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:  # 左クリック
+            if (
+                event.button == 1 and self.game_state == GAME_STATE_PLACING
+            ):  # 左クリックかつ配置モード
                 if self.held_piece:
                     # 既に掴んでいる場合は配置試行（クリック＆クリック操作の2回目）
                     self._try_place_piece(event.pos)
@@ -76,7 +92,7 @@ class PlayState(State):
 
         # マウスボタンアップ (ドラッグ＆ドロップの配置処理)
         if event.type == pygame.MOUSEBUTTONUP:
-            if event.button == 1:
+            if event.button == 1 and self.game_state == GAME_STATE_PLACING:
                 # ドラッグ中であれば配置試行
                 if self.held_piece and self.is_dragging:
                     self._try_place_piece(event.pos)
@@ -116,12 +132,22 @@ class PlayState(State):
             self.tile_map.place_piece(grid_x, grid_y, self.held_piece)
             self.held_piece = None
             self.is_dragging = False
+
+            # 全ての駒が配置されたかチェック
+            if len(self.inventory.players_data) == 0:
+                self._start_simulation()
         else:
             # 無効な場所なら離す（ドラッグ中ならインベントリに戻る、クリック操作なら戻る）
             # 仕様：もし配置できない場所だったらインベントリに戻す
             self.inventory.add_piece(self.held_piece)
             self.held_piece = None
             self.is_dragging = False
+
+    def _start_simulation(self):
+        print("Start Simulation")
+        self.game_state = GAME_STATE_SIMULATING
+        self.simulator = Simulator(self.tile_map.map_data, self.tile_map.placed_pieces)
+        self.sim_timer = 0
 
     def update(self, dt):
         # フレームごとに無操作タイマーを加算
@@ -132,6 +158,23 @@ class PlayState(State):
             from src.states.confirm import ConfirmContinueState
 
             self.manager.change_state(ConfirmContinueState(self.manager))
+
+        # シミュレーション更新
+        if self.game_state == GAME_STATE_SIMULATING:
+            self.sim_timer += dt
+            if self.sim_timer >= SIM_STEP_DELAY:
+                self.sim_timer = 0
+                status = self.simulator.step()
+
+                if status == "WIN":
+                    print(f"Level {self.current_level} Cleared!")
+                    self.current_level += 1
+                    # 次のレベルがあれば読み込む、なければクリア画面（未実装のためとりあえずレベル1に戻るか、最大レベルチェック）
+                    # ステージファイル数チェックはしていないので、load_stageでエラーが出たらハンドリング
+                    self.enter()
+                elif status == "LOSE":
+                    print("Example Failed... Resetting.")
+                    self.enter()
 
     def draw(self, surface):
         surface.fill(COLOR_BLACK)
