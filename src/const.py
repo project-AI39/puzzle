@@ -46,6 +46,7 @@ TILE_WARP = "00800"  # ワープ
 
 # シミュレーション設定
 SIM_STEP_DELAY = 500  # ms
+SIM_ANIM_DURATION = 500  # ms - アニメーション時間 (< SIM_STEP_DELAY)
 
 # ゲーム状態
 GAME_STATE_PLACING = "placing"

@@ -15,6 +15,7 @@ from src.const import (
     GAME_STATE_PLACING,
     GAME_STATE_SIMULATING,
     SIM_STEP_DELAY,
+    SIM_ANIM_DURATION,
 )
 from src.game.loader import StageLoader
 from src.game.map import TileMap
@@ -45,6 +46,8 @@ class PlayState(State):
         self.game_state = GAME_STATE_PLACING
         self.simulator = None
         self.sim_timer = 0
+        self.sim_last_result = "CONTINUE"
+        self.prev_player_positions = []  # アニメーション用: 各プレイヤーの移動前座標 [{"x": int, "y": int}]
 
     def enter(self):
         print("プレイモードに遷移しました")
@@ -147,7 +150,12 @@ class PlayState(State):
         print("Start Simulation")
         self.game_state = GAME_STATE_SIMULATING
         self.simulator = Simulator(self.tile_map.map_data, self.tile_map.placed_pieces)
-        self.sim_timer = 0
+        self.sim_timer = SIM_STEP_DELAY  # 即座に最初のステップを実行させるため
+        self.sim_last_result = "CONTINUE"
+        # 初期座標を記録
+        self.prev_player_positions = [
+            {"x": p["grid_x"], "y": p["grid_y"]} for p in self.tile_map.placed_pieces
+        ]
 
     def update(self, dt):
         # フレームごとに無操作タイマーを加算
@@ -162,19 +170,30 @@ class PlayState(State):
         # シミュレーション更新
         if self.game_state == GAME_STATE_SIMULATING:
             self.sim_timer += dt
-            if self.sim_timer >= SIM_STEP_DELAY:
-                self.sim_timer = 0
-                status = self.simulator.step()
 
-                if status == "WIN":
+            if self.sim_timer >= SIM_STEP_DELAY:
+                # 前回の結果判定をここで行う（アニメーション終了後）
+                if self.sim_last_result == "WIN":
                     print(f"Level {self.current_level} Cleared!")
                     self.current_level += 1
-                    # 次のレベルがあれば読み込む、なければクリア画面（未実装のためとりあえずレベル1に戻るか、最大レベルチェック）
-                    # ステージファイル数チェックはしていないので、load_stageでエラーが出たらハンドリング
                     self.enter()
-                elif status == "LOSE":
+                    return
+                elif self.sim_last_result == "LOSE":
                     print("Example Failed... Resetting.")
                     self.enter()
+                    return
+
+                # 次のステップへ
+                self.sim_timer = 0
+
+                # 現在位置を「前回位置」として保存
+                self.prev_player_positions = [
+                    {"x": p["grid_x"], "y": p["grid_y"]}
+                    for p in self.tile_map.placed_pieces
+                ]
+
+                # シミュレーション実行 (座標が更新される)
+                self.sim_last_result = self.simulator.step()
 
     def draw(self, surface):
         surface.fill(COLOR_BLACK)
@@ -189,7 +208,60 @@ class PlayState(State):
             # マップをプレイエリアの中央に配置
             map_x = (play_area_width - self.tile_map.width) // 2
             map_y = (SCREEN_HEIGHT - self.tile_map.height) // 2
+
+            # --- マップ描画 ---
+            # シミュレーション中はTileMapの駒描画を一時的に無効化し、補間描画を行う
+            real_placed_pieces = self.tile_map.placed_pieces
+            if self.game_state == GAME_STATE_SIMULATING:
+                self.tile_map.placed_pieces = []  # 一時的に隠す
+
             self.tile_map.draw(surface, map_x, map_y)
+
+            if self.game_state == GAME_STATE_SIMULATING:
+                self.tile_map.placed_pieces = real_placed_pieces  # 戻す
+
+                # アニメーション補間して描画
+                import src.const as c  # 定数参照用
+
+                # 等速直線運動 (t: 0.0 -> 1.0)
+                t = min(self.sim_timer / SIM_ANIM_DURATION, 1.0)
+
+                # スプライトアニメーション (フレーム計算)
+                # 0~1の進行度を4フレームにマッピング (0, 1, 2, 3)
+                frame_index = int(t * 4) % 4
+
+                for i, p in enumerate(self.tile_map.placed_pieces):
+                    if i < len(self.prev_player_positions):
+                        # 最新座標 (grid)
+                        curr_gx, curr_gy = p["grid_x"], p["grid_y"]
+                        # 前回座標
+                        prev_pos = self.prev_player_positions[i]
+                        prev_gx, prev_gy = prev_pos["x"], prev_pos["y"]
+
+                        # 補間座標 (grid単位) - 等速
+                        lerp_gx = prev_gx + (curr_gx - prev_gx) * t
+                        lerp_gy = prev_gy + (curr_gy - prev_gy) * t
+
+                        # 画面座標変換
+                        screen_x = map_x + lerp_gx * c.TILE_SIZE
+                        screen_y = map_y + lerp_gy * c.TILE_SIZE
+
+                        # 画像取得 (TileMapの新しいplayer_imagesを使用)
+                        direction = p["piece"]["direction"]
+                        # 方向に対応するフレームリストを取得
+                        frames = self.tile_map.player_images.get(direction)
+                        if frames and len(frames) > 0:
+                            # フレーム数が4未満の場合の安全策
+                            safe_frame_index = frame_index % len(frames)
+                            img = frames[safe_frame_index]
+                            surface.blit(img, (screen_x, screen_y))
+                        else:
+                            # 万が一画像がない場合は矩形で描画 (デバッグ用)
+                            pygame.draw.rect(
+                                surface,
+                                (255, 0, 0),
+                                (screen_x, screen_y, c.TILE_SIZE, c.TILE_SIZE),
+                            )
 
             # インベントリ領域の計算 (画面右端)
             inventory_rect = pygame.Rect(

@@ -73,15 +73,25 @@ class TileMap:
 
     def _load_player_images(self):
         """プレイヤー画像の読み込み（マップ描画用）"""
+        self.player_images = {}  # dict[str, list[Surface]]
         directions = ["up", "down", "left", "right"]
         for d in directions:
-            filename = f"{d}player0_tile0.png"
-            path = os.path.join(self.img_dir, filename)
-            if os.path.exists(path):
-                img = pygame.image.load(path).convert_alpha()
-                if TILE_SIZE != 32:
-                    img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
-                self.player_images[d] = img
+            frames = []
+            for i in range(4):
+                filename = f"{d}player0_tile{i}.png"
+                path = os.path.join(self.img_dir, filename)
+                if os.path.exists(path):
+                    img = pygame.image.load(path).convert_alpha()
+                    if TILE_SIZE != 32:
+                        img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
+                    frames.append(img)
+                else:
+                    # 最初のフレームが見つからない場合は警告、それ以外は無視（フレーム数不足許容）
+                    if i == 0:
+                        print(f"Warning: Player image not found: {path}")
+
+            if frames:
+                self.player_images[d] = frames
 
     def get_grid_pos(self, screen_x, screen_y):
         """画面座標をグリッド座標に変換"""
@@ -141,8 +151,10 @@ class TileMap:
             grid_y = p["grid_y"]
             piece = p["piece"]
 
-            img = self.player_images.get(piece["direction"])
-            if img:
+            frames = self.player_images.get(piece["direction"])
+            if frames and len(frames) > 0:
+                # 静止中はフレーム0を表示
+                img = frames[0]
                 x = offset_x + grid_x * TILE_SIZE
                 y = offset_y + grid_y * TILE_SIZE
                 surface.blit(img, (x, y))

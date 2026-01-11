@@ -35,68 +35,97 @@ class Simulator:
         if self.status != "CONTINUE":
             return self.status
 
-        # 1. 各プレイヤーの次の位置を計算 (まだ移動させない)
-        next_positions = []
-        for p in self.players:
-            nx, ny = self._get_next_pos(
-                p["grid_x"], p["grid_y"], p["piece"]["direction"]
-            )
-            next_positions.append({"x": nx, "y": ny, "player": p})
-
-        # 2. 移動先の内容確認と移動実行
-        # 衝突判定のため、全員同時に移動したと仮定してチェックする
-
-        # まず移動先に更新
-        # Note: 実際にはタイル効果で移動前に向きが変わる等の仕様がある場合ここで処理
-        # 仕様: "矢印: プレイヤーの向きを変更" -> 着地後に変わると解釈するか、乗った瞬間に変わるか。
-        # 仕様: "ワープ: 到達すると...テレポート" -> 着地後にテレポート
-
-        collision_detected = False
-        goal_count = 0
-
-        # 一時的に新しい座標を保存
+        # 1. 各プレイヤーの次の位置を計算
         new_states = []
 
-        for i, np in enumerate(next_positions):
-            p = self.players[i]
-            nx, ny = np["x"], np["y"]
+        for i, p in enumerate(self.players):
+            current_x, current_y = p["grid_x"], p["grid_y"]
+            current_tile = self._get_tile_at(current_x, current_y)
 
-            # マップ外判定 (奈落扱い)
-            if not self._is_within_bounds(nx, ny):
+            # 状態更新用の一時辞書
+            state_update = {
+                "grid_x": current_x,
+                "grid_y": current_y,
+                "piece": p[
+                    "piece"
+                ].copy(),  # pieceも変更する可能性があるためコピー推奨 (方向転換)
+                "waited_on_warp": p.get(
+                    "waited_on_tile", False
+                ),  # 後方互換性のため一旦 waited_on_warp キーを使うが、意味は waited_on_tile
+                "just_warped": False,  # 今回のステップでワープしたか
+            }
+
+            # A. ワープ判定 (乗っていて、かつ待機済みフラグがない場合)
+            if current_tile.startswith("008") and not p.get("waited_on_warp", False):
+                # ワープ実行
+                target_pos = self._find_warp_target(current_tile, current_x, current_y)
+                if target_pos:
+                    state_update["grid_x"] = target_pos[0]
+                    state_update["grid_y"] = target_pos[1]
+                    state_update["waited_on_warp"] = True  # ワープ先で待機状態にする
+                    state_update["just_warped"] = True
+                else:
+                    # ワープ先が見つからない場合はその場に留まる（またはエラー？）
+                    pass
+
+            # B. 矢印判定 (乗っていて、かつ待機済みフラグがない場合)
+            elif current_tile in (
+                TILE_UP,
+                TILE_DOWN,
+                TILE_LEFT,
+                TILE_RIGHT,
+            ) and not p.get("waited_on_warp", False):
+                # 方向転換実行 (移動はしない)
+                if current_tile == TILE_UP:
+                    state_update["piece"]["direction"] = "up"
+                elif current_tile == TILE_DOWN:
+                    state_update["piece"]["direction"] = "down"
+                elif current_tile == TILE_RIGHT:
+                    state_update["piece"]["direction"] = "right"
+                elif current_tile == TILE_LEFT:
+                    state_update["piece"]["direction"] = "left"
+
+                state_update["waited_on_warp"] = True
+                # 座標は維持
+
+            # B. ゴール判定 (乗っていたら停止)
+            elif current_tile == TILE_GOAL:
+                # 移動しない
+                pass
+
+            # C. 通常移動
+            else:
+                nx, ny = self._get_next_pos(
+                    current_x, current_y, p["piece"]["direction"]
+                )
+
+                # 壁判定 (NULLは壁とみなす -> 移動しない)
+                next_tile = self._get_tile_at(nx, ny)
+                if next_tile == TILE_NULL:
+                    nx, ny = current_x, current_y  # 壁ドン停止
+
+                state_update["grid_x"] = nx
+                state_update["grid_y"] = ny
+
+                # ワープなどの待機フラグは移動を試みたらリセット
+                state_update["waited_on_warp"] = False
+
+            new_states.append(state_update)
+
+        # 2. 衝突判定 & マップ外/奈落判定
+
+        # 座標の検証 (マップ外と奈落)
+        for ns in new_states:
+            if not self._is_within_bounds(ns["grid_x"], ns["grid_y"]):
                 self.status = "LOSE"
                 return self.status
 
-            tile_id = self._get_tile_at(nx, ny)
-
-            # 奈落判定
-            # "00100" が奈落 (const.pyでTILE_PIT定義要)
+            tile_id = self._get_tile_at(ns["grid_x"], ns["grid_y"])
             if tile_id == TILE_PIT:
                 self.status = "LOSE"
                 return self.status
 
-            # 壁判定（無効なタイル）: 通常、ゴール、矢印、ワープ以外は壁とみなす
-            # 簡易的に、NULLタイルは壁として移動しないことにする？
-            # 仕様書には壁の挙動詳細がないが、「置けるマス」以外は移動不可とすると詰む。
-            # ここでは「移動はできるが、不正なマスなら落ちる」あるいは「壁なら止まる」
-            # 仕様書: "奈落: 00100"
-            # 00200(通常), 00300(ゴール), 004~700(矢印), 00800(ワープ)
-            # それ以外は？ とりあえず壁として「移動せず停止」とするか、「移動してLOSE」か。
-            # 今回は "移動して、そのタイルの効果を受ける" とする。
-            # タイルIDが未知なら壁として移動しない処理を入れる
-            if tile_id == TILE_NULL:
-                # 移動キャンセル（壁）
-                nx, ny = p["grid_x"], p["grid_y"]
-
-            # 状態更新準備
-            new_states.append(
-                {
-                    "grid_x": nx,
-                    "grid_y": ny,
-                    "piece": p["piece"],  # 参照
-                }
-            )
-
-        # 3. 衝突判定 (Player vs Player)
+        # 衝突判定 (Player vs Player)
         # 同じ座標に2人以上いるか
         pos_counts = {}
         for ns in new_states:
@@ -109,13 +138,11 @@ class Simulator:
                 return self.status
 
         # 正面衝突 (Swap) 判定
-        # Aが(0,0)->(0,1), Bが(0,1)->(0,0) のようなケース
         for i, ns in enumerate(new_states):
             old_p = self.players[i]
             old_pos = (old_p["grid_x"], old_p["grid_y"])
             new_pos = (ns["grid_x"], ns["grid_y"])
 
-            # 全探索で他のプレイヤーとの入れ替わりチェック
             for j, other_ns in enumerate(new_states):
                 if i == j:
                     continue
@@ -127,35 +154,28 @@ class Simulator:
                     self.status = "LOSE"  # 正面衝突
                     return self.status
 
-        # 4. 座標確定とタイル効果適用
+        # 3. 座標確定とタイル効果適用 (矢印のみ)
+        # ワープとゴールは移動ロジック内で処理済み
+        goal_count = 0
+
         for i, ns in enumerate(new_states):
             # 座標更新
             self.players[i]["grid_x"] = ns["grid_x"]
             self.players[i]["grid_y"] = ns["grid_y"]
+            self.players[i]["waited_on_warp"] = ns["waited_on_warp"]
+            self.players[i]["piece"] = ns["piece"]  # 方向転換の適用
 
             # タイル効果適用
             tile_id = self._get_tile_at(ns["grid_x"], ns["grid_y"])
 
-            # ゴール判定
+            # ゴール判定（勝利条件チェック用）
             if tile_id == TILE_GOAL:
                 goal_count += 1
 
-            # 矢印判定
-            if tile_id == TILE_UP:
-                self.players[i]["piece"]["direction"] = "up"
-            elif tile_id == TILE_DOWN:
-                self.players[i]["piece"]["direction"] = "down"
-            elif tile_id == TILE_RIGHT:
-                self.players[i]["piece"]["direction"] = "right"
-            elif tile_id == TILE_LEFT:
-                self.players[i]["piece"]["direction"] = "left"
+            # 旧ロジックの矢印判定等は削除済み
+            # ワープIDの扱いは移動ロジックで済んでいるのでここでは何もしない
 
-            # ワープ判定
-            # "008xx"
-            if tile_id.startswith("008"):
-                self._handle_warp(i, tile_id)
-
-        # 5. 勝利判定
+        # 4. 勝利判定
         if goal_count == len(self.players):
             self.status = "WIN"
 
@@ -180,26 +200,12 @@ class Simulator:
             return self.map_data[y][x]
         return TILE_NULL
 
-    def _handle_warp(self, player_index, warp_id):
-        # 同じIDを持つ別の座標を探す
-        current_x = self.players[player_index]["grid_x"]
-        current_y = self.players[player_index]["grid_y"]
-
+    def _find_warp_target(self, warp_id, current_x, current_y):
+        """指定されたワープIDのペアとなる座標を探す"""
         for r in range(self.rows):
             for c in range(self.cols):
                 if (r != current_y or c != current_x) and self.map_data[r][
                     c
                 ] == warp_id:
-                    # ワープ先発見
-                    self.players[player_index]["grid_x"] = c
-                    self.players[player_index]["grid_y"] = r
-
-                    # ワープ先に誰かいたら衝突（単純化のためここで判定してもよいが、
-                    # 次のステップの衝突判定に任せるか？
-                    # 仕様では「瞬時に移動」なので、移動直後に重なっていたらLOSEにすべき
-                    # ここで簡易チェック
-                    for i, p in enumerate(self.players):
-                        if i != player_index:
-                            if p["grid_x"] == c and p["grid_y"] == r:
-                                self.status = "LOSE"
-                    return
+                    return (c, r)
+        return None
