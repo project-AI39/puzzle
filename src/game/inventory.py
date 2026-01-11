@@ -14,6 +14,9 @@ class Inventory:
         self.img_dir = img_dir
         self.images = {}
         self._load_images()
+        # 描画したアイテムの矩形を保持するリスト (hit test用)
+        # 要素: {"rect": pygame.Rect, "piece": dict}
+        self.drawn_items = []
 
     def _load_images(self):
         """プレイヤー画像の読み込み"""
@@ -32,6 +35,24 @@ class Inventory:
             else:
                 print(f"Warning: Player image not found: {path}")
 
+    def get_piece_at(self, pos: tuple[int, int]) -> dict | None:
+        """指定座標にある駒を取得し、インベントリから削除して返す"""
+        for item in self.drawn_items:
+            if item["rect"].collidepoint(pos):
+                piece = item["piece"]
+                self.remove_piece(piece)
+                return piece
+        return None
+
+    def add_piece(self, piece: dict):
+        """駒をインベントリに追加"""
+        self.players_data.append(piece)
+
+    def remove_piece(self, piece: dict):
+        """駒をインベントリから削除"""
+        if piece in self.players_data:
+            self.players_data.remove(piece)
+
     def draw(self, surface, inventory_rect: pygame.Rect):
         """インベントリの描画
         Arguments:
@@ -39,6 +60,9 @@ class Inventory:
         """
         # 背景描画
         pygame.draw.rect(surface, COLOR_DARK_GRAY, inventory_rect)
+
+        # hit test用リストをクリア
+        self.drawn_items = []
 
         # アイテム数とタイルのサイズから全体の高さを計算
         count = len(self.players_data)
@@ -59,4 +83,9 @@ class Inventory:
             img = self.images.get(direction)
             if img:
                 surface.blit(img, (item_x, current_y))
+
+                # 矩形を記録
+                rect = pygame.Rect(item_x, current_y, TILE_SIZE, TILE_SIZE)
+                self.drawn_items.append({"rect": rect, "piece": player})
+
                 current_y += TILE_SIZE + item_spacing
