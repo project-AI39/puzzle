@@ -1,6 +1,6 @@
 # d:/game/puzzle/src/states/confirm.py
-# Confirm Continue State
-# Ask user if they want to continue
+# コンティニュー確認画面の状態
+# プレイ中に長時間放置された場合に表示。ユーザーが操作すればプレイに戻るが、放置すればアトラクトに戻る。
 # RELEVANT FILES: src/const.py, src/states/play.py, src/states/attract.py
 
 import pygame
@@ -26,12 +26,13 @@ class ConfirmContinueState(State):
         self.last_mouse_pos = None
 
     def enter(self):
-        print("Entering CONFIRM State")
+        print("コンティニュー確認画面に遷移しました")
         self.timer = 0
         self.accumulated_move = 0.0
         self.last_mouse_pos = pygame.mouse.get_pos()
 
     def handle_event(self, event):
+        # マウス移動があればプレイモードに戻る
         if event.type == pygame.MOUSEMOTION:
             current_pos = event.pos
             if self.last_mouse_pos:
@@ -43,7 +44,7 @@ class ConfirmContinueState(State):
             self.last_mouse_pos = current_pos
 
             if self.accumulated_move > MOUSE_MOVE_THRESHOLD:
-                # Go back to Play
+                # プレイモードへ復帰
                 from src.states.play import PlayState
 
                 self.manager.change_state(PlayState(self.manager))

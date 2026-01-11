@@ -1,7 +1,7 @@
 # d:/game/puzzle/src/states/play.py
-# Play Mode State
-# Main game loop state (placeholder for now)
-# Monitors inactivity to transition to Confirm
+# プレイモードの状態
+# ゲームのメインループ（現在はプレースホルダー）
+# 無操作状態を監視し、一定時間経過でコンティニュー確認へ遷移する
 # RELEVANT FILES: src/const.py, src/core/state_machine.py
 
 import pygame
@@ -23,14 +23,16 @@ class PlayState(State):
         self.last_mouse_pos = None
 
     def enter(self):
-        print("Entering PLAY State")
+        print("プレイモードに遷移しました")
         self.inactivity_timer = 0
         self.last_mouse_pos = pygame.mouse.get_pos()
 
     def handle_event(self, event):
+        # マウスが動いたらタイマーリセット
         if event.type == pygame.MOUSEMOTION:
             self.inactivity_timer = 0
 
+        # 'D'キーで開発者モードへ
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_d:
                 from src.states.dev import DevState
@@ -38,11 +40,8 @@ class PlayState(State):
                 self.manager.change_state(DevState(self.manager))
 
     def update(self, dt):
-        # Even if no event, check inactivity?
-        # Actually MOUSEMOTION event is generated when mouse moves.
-        # If no event, we increment timer?
-        # But we need to be careful. event loop only handles events.
-        # Timer should increment every frame. Reset on inputs.
+        # フレームごとに無操作タイマーを加算
+        # handle_eventでリセットされない限り加算され続ける
         self.inactivity_timer += dt
 
         if self.inactivity_timer >= PLAY_TIMEOUT:

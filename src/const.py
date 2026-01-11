@@ -1,14 +1,14 @@
 # d:/game/puzzle/src/const.py
-# Constants for the game
-# Defines screen size, colors, and timers
-# RELEVANT FILES: main.py, src/app.py
+# ゲーム全体の定数定義
+# 画面サイズ、色、状態名、タイマー時間などを一元管理するため
+# RELEVANT FILES: src/app.py, src/states/attract.py
 
-# Screen dimensions
+# 画面サイズ
 SCREEN_WIDTH = 800
 SCREEN_HEIGHT = 600
 FPS = 60
 
-# Colors (R, G, B)
+# 色定義 (R, G, B)
 COLOR_BLACK = (0, 0, 0)
 COLOR_WHITE = (255, 255, 255)
 COLOR_RED = (255, 0, 0)
@@ -17,17 +17,17 @@ COLOR_BLUE = (0, 0, 255)
 COLOR_YELLOW = (255, 255, 0)
 COLOR_GRAY = (128, 128, 128)
 
-# Modes / States
+# 状態名（ステート）
 STATE_ATTRACT = "ATTRACT"
 STATE_TITLE = "TITLE"
 STATE_PLAY = "PLAY"
 STATE_CONFIRM = "CONFIRM"
 STATE_DEV = "DEV"
 
-# Timers (in milliseconds)
-TITLE_WAIT_TIME = 3000  # Time to stay on title screen (3 seconds)
-PLAY_TIMEOUT = 60000  # 1 minute inactivity to confirm
-CONFIRM_TIMEOUT = 10000  # 10 seconds to decide in confirm
-MOUSE_MOVE_THRESHOLD = 100  # Pixel squared distance or aggregate movement threshold
+# タイマー設定 (ミリ秒)
+TITLE_WAIT_TIME = 3000  # タイトル画面の表示時間 (3秒)
+PLAY_TIMEOUT = 60000  # プレイ中の無操作タイムアウト (1分)
+CONFIRM_TIMEOUT = 10000  # コンティニュー確認のタイムアウト (10秒)
+MOUSE_MOVE_THRESHOLD = 100  # マウス移動検知の閾値 (ピクセル移動量の累積など)
 
 STRING_TITLE = "Puzzle Game"

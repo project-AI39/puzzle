@@ -1,6 +1,6 @@
 # d:/game/puzzle/src/states/dev.py
-# Developer Mode State
-# For debugging and map creation
+# 開発者モードの状態
+# ステージ作成やデバッグ機能を提供する（現在はプレースホルダー）
 # RELEVANT FILES: src/const.py, src/core/state_machine.py
 
 import pygame
@@ -19,9 +19,10 @@ class DevState(State):
         self.font = pygame.font.SysFont("Arial", 48)
 
     def enter(self):
-        print("Entering DEV State")
+        print("開発者モードに遷移しました")
 
     def handle_event(self, event):
+        # 'D'キーでアトラクトモードに戻る
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_d:
                 from src.states.attract import AttractState

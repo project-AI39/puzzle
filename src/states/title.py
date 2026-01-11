@@ -1,6 +1,6 @@
 # d:/game/puzzle/src/states/title.py
-# Title Screen State
-# Transitions to Play after a delay
+# タイトル画面の状態
+# 一定時間待機した後にプレイ画面へ遷移する
 # RELEVANT FILES: src/const.py, src/core/state_machine.py
 
 import pygame
@@ -21,10 +21,11 @@ class TitleState(State):
         self.timer = 0
 
     def enter(self):
-        print("Entering TITLE State")
+        print("タイトル画面に遷移しました")
         self.timer = 0
 
     def update(self, dt):
+        # 一定時間経過後にプレイモードへ
         self.timer += dt
         if self.timer >= TITLE_WAIT_TIME:
             from src.states.play import PlayState

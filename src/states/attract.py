@@ -1,6 +1,6 @@
 # d:/game/puzzle/src/states/attract.py
-# Attract Mode State
-# Displays demo and waits for user interaction
+# アトラクトモード（デモ待機）の状態
+# デモを表示し（現在はプレースホルダー）、ユーザーの操作を待つ
 # RELEVANT FILES: src/const.py, src/core/state_machine.py
 
 import pygame
@@ -21,15 +21,16 @@ class AttractState(State):
         super().__init__(manager)
         self.font = pygame.font.SysFont("Arial", 48)
         self.sub_font = pygame.font.SysFont("Arial", 24)
-        self.accumulated_move = 0.0
+        self.accumulated_move = 0.0  # 累積移動距離
         self.last_mouse_pos = None
 
     def enter(self):
-        print("Entering ATTRACT State")
+        print("アトラクトモードに遷移しました")
         self.accumulated_move = 0.0
         self.last_mouse_pos = pygame.mouse.get_pos()
 
     def handle_event(self, event):
+        # マウス移動の検知（閾値以上でタイトルへ）
         if event.type == pygame.MOUSEMOTION:
             current_pos = event.pos
             if self.last_mouse_pos:
@@ -45,6 +46,7 @@ class AttractState(State):
 
                 self.manager.change_state(TitleState(self.manager))
 
+        # 'D'キーで開発者モードへ
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_d:
                 from src.states.dev import DevState

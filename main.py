@@ -1,5 +1,6 @@
 # d:/game/puzzle/main.py
-# Entry point for the application
+# エントリーポイント
+# GameAppをインスタンス化して実行するだけのシンプルなスクリプト
 # RELEVANT FILES: src/app.py
 
 from src.app import GameApp

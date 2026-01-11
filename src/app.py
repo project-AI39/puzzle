@@ -1,6 +1,6 @@
 # d:/game/puzzle/src/app.py
-# Main App Class
-# Manages Pygame initialization and main loop
+# メインアプリケーションクラス
+# Pygameの初期化とメインループ（更新・描画）を管理する
 # RELEVANT FILES: src/const.py, src/core/state_machine.py, src/states/attract.py
 
 import pygame
@@ -9,11 +9,12 @@ from src.const import SCREEN_WIDTH, SCREEN_HEIGHT, STRING_TITLE, FPS
 from src.core.state_machine import StateMachine
 from src.states.attract import AttractState
 
-# Add a title constant if not exists, or just use string
+# タイトル文字列は定数ファイルから取得するため削除
 
 
 class GameApp:
     def __init__(self):
+        # Pygameの初期化
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption(STRING_TITLE)
@@ -22,7 +23,7 @@ class GameApp:
         self.running = True
 
     def run(self):
-        # Start with Attract State
+        # アトラクトモードから開始
         self.state_machine.change_state(AttractState(self.state_machine))
 
         while self.running:
