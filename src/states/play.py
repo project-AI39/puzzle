@@ -303,7 +303,9 @@ class PlayState(State):
                         from src.states.dev import DevState
 
                         print("Test Play Cleared! Returning to Dev Mode.")
-                        self.manager.change_state(DevState(self.manager))
+                        self.manager.change_state(
+                            DevState(self.manager, initial_data=self.custom_stage_data)
+                        )
                         return
 
                     # 次のレベルがあるか確認

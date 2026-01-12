@@ -1,8 +1,3 @@
-# d:/game/puzzle/src/states/dev.py
-# 開発者モードの状態
-# マップエディタ機能を提供する（自動生成は廃止）
-# RELEVANT FILES: src/const.py, src/core/state_machine.py, src/ui/widgets.py, src/game/map.py
-
 import pygame
 import json
 import os
@@ -14,7 +9,6 @@ from src.const import (
     SCREEN_WIDTH,
     SCREEN_HEIGHT,
     COLOR_BLACK,
-    COLOR_BLUE,
     COLOR_WHITE,
     COLOR_GREEN,
     TILE_NORMAL,
@@ -25,11 +19,12 @@ from src.const import (
     TILE_DOWN,
     TILE_LEFT,
     TILE_RIGHT,
+    TILE_SIZE,
 )
 
 
 class DevState(State):
-    def __init__(self, manager):
+    def __init__(self, manager, initial_data=None):
         super().__init__(manager)
         self.font = pygame.font.SysFont("Arial", 32)
         self.small_font = pygame.font.SysFont("Arial", 24)
@@ -59,7 +54,6 @@ class DevState(State):
 
         # 2. ブラシ選択 (パレット)
         self.brushes = [
-            # Wall (TILE_NULL) Removed as requested - unify with Pit
             {"label": "Floor", "value": TILE_NORMAL, "type": "tile"},
             {"label": "Goal", "value": TILE_GOAL, "type": "tile"},
             {"label": "Pit", "value": TILE_PIT, "type": "tile"},
@@ -77,27 +71,14 @@ class DevState(State):
             {"label": "Player R", "value": "right", "type": "player"},
         ]
 
-        self.brush_buttons = []
-        start_y = 250
-        btn_h = 40
-        btn_w = 120
-        cols = 3
-        margin = 10
+        # パレット設定
+        self.palette_start_x = 30
+        self.palette_start_y = 250
+        self.palette_tile_size = 48  # 表示サイズ
+        self.palette_cols = 8  # 1行あたりの数
+        self.palette_margin = 10
 
-        for i, brush in enumerate(self.brushes):
-            r = i // cols
-            c = i % cols
-            bx = 20 + c * (btn_w + margin)
-            by = start_y + r * (btn_h + margin)
-            btn = Button(
-                rect=(bx, by, btn_w, btn_h),
-                text=brush["label"],
-                callback=lambda b=brush: self._set_brush(b),
-                font=self.small_font,
-            )
-            self.brush_buttons.append(btn)
-
-        self.current_brush = self.brushes[0]  # Default: Floor
+        self.current_brush = self.brushes[0]
 
         # マッセージ
         self.message = "Map Editor: Paint tiles freely."
@@ -106,14 +87,31 @@ class DevState(State):
         # マップデータ管理
         self.map_width = 15
         self.map_height = 10
-        self.map_data = [
-            [TILE_PIT for _ in range(self.map_width)] for _ in range(self.map_height)
-        ]
-        # プレイヤー管理: [{"grid_x":, "grid_y":, "direction": ...}]
-        self.placed_players = []
+
+        if initial_data:
+            print("Restoring Map Data...")
+            self.map_data = initial_data["map_data"]
+            self.placed_players = []
+            if "players" in initial_data:
+                for p in initial_data["players"]:
+                    if "answer" in p:
+                        self.placed_players.append(
+                            {
+                                "grid_x": p["answer"]["x"],
+                                "grid_y": p["answer"]["y"],
+                                "direction": p["direction"],
+                            }
+                        )
+        else:
+            self.map_data = [
+                [TILE_PIT for _ in range(self.map_width)]
+                for _ in range(self.map_height)
+            ]
+            self.placed_players = []
 
         # TileMapインスタンス
         self.tile_map = TileMap(self.map_data)
+        self._refresh_tile_map()
 
     def _set_brush(self, brush):
         self.current_brush = brush
@@ -138,7 +136,7 @@ class DevState(State):
 
     def _on_save(self):
         try:
-            save_dir = "d:/game/puzzle/create_stage"
+            save_dir = "create_stage"
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
 
@@ -146,24 +144,19 @@ class DevState(State):
             filename = f"stage_{now.strftime('%Y%m%d_%H%M%S')}.json"
             filepath = os.path.join(save_dir, filename)
 
-            # 手動配置なので players と answer に同じものを入れておく
-            players_export = [
-                {"direction": p["direction"]} for p in self.placed_players
-            ]
-            answer_export = []
+            # playersリストにanswer情報を含める(1.json形式)
+            players_export = []
             for p in self.placed_players:
-                answer_export.append(
+                players_export.append(
                     {
-                        "grid_x": p["grid_x"],
-                        "grid_y": p["grid_y"],
-                        "piece": {"direction": p["direction"]},
+                        "direction": p["direction"],
+                        "answer": {"x": p["grid_x"], "y": p["grid_y"]},
                     }
                 )
 
             data = {
                 "map_data": self.map_data,
                 "players": players_export,
-                "answer": answer_export,
             }
 
             with open(filepath, "w", encoding="utf-8") as f:
@@ -178,14 +171,12 @@ class DevState(State):
             self.message = "No players placed!"
             return
 
-        players_export = [{"direction": p["direction"]} for p in self.placed_players]
-        answer_export = []
+        players_export = []
         for p in self.placed_players:
-            answer_export.append(
+            players_export.append(
                 {
-                    "grid_x": p["grid_x"],
-                    "grid_y": p["grid_y"],
-                    "piece": {"direction": p["direction"]},
+                    "direction": p["direction"],
+                    "answer": {"x": p["grid_x"], "y": p["grid_y"]},
                 }
             )
 
@@ -193,8 +184,9 @@ class DevState(State):
         stage_data = {
             "map_data": self.map_data,
             "players": players_export,
-            "answer": answer_export,
-            # "auto_play": True  # 手動プレイがいいのでFalse (デフォルト)
+            # "auto_play": True を入れると答え合わせモードになるが、
+            # PlayStateはトップレベル answer を見て auto_play 判断するため注意。
+            # 形式統一のため、一旦手動プレイで開始させる。
         }
 
         print("Starting Test Play...")
@@ -213,11 +205,31 @@ class DevState(State):
         self.clear_btn.handle_event(event)
         self.save_btn.handle_event(event)
         self.test_play_btn.handle_event(event)
-        for btn in self.brush_buttons:
-            btn.handle_event(event)
+
+        # パレットクリック処理
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+            if mx < self.panel_width:
+                # パレットエリア判定
+                for i, brush in enumerate(self.brushes):
+                    r = i // self.palette_cols
+                    c = i % self.palette_cols
+
+                    x = self.palette_start_x + c * (
+                        self.palette_tile_size + self.palette_margin
+                    )
+                    y = self.palette_start_y + r * (
+                        self.palette_tile_size + self.palette_margin
+                    )
+
+                    rect = pygame.Rect(
+                        x, y, self.palette_tile_size, self.palette_tile_size
+                    )
+                    if rect.collidepoint(mx, my):
+                        self._set_brush(brush)
+                        break
 
         # マップクリック処理 (ペイント機能)
-        # MOUSEBUTTONDOWN または LEFT-CLICK-DRAG
         is_click = event.type == pygame.MOUSEBUTTONDOWN and event.button == 1
         is_drag = event.type == pygame.MOUSEMOTION and event.buttons[0]
 
@@ -225,11 +237,17 @@ class DevState(State):
             mx, my = event.pos
             # マップエリア内か判定 (右側)
             if mx > self.panel_width:
-                # TileMap.get_grid_posは内部状態(last_offset)を使うので
-                # 前回draw時のオフセットが使われる。
-                # 画面サイズが変わらなければ問題ない。
+                # オフセットをここで計算して使用する (TileMap内部状態への依存を排除)
+                area_w = SCREEN_WIDTH - self.panel_width
+                map_pixel_w = self.tile_map.width
+                map_pixel_h = self.tile_map.height
 
-                gx, gy = self.tile_map.get_grid_pos(mx, my)
+                offset_x = self.panel_width + (area_w - map_pixel_w) // 2
+                offset_y = (SCREEN_HEIGHT - map_pixel_h) // 2
+
+                # 座標変換
+                gx = (mx - offset_x) // TILE_SIZE
+                gy = (my - offset_y) // TILE_SIZE
 
                 if 0 <= gx < self.map_width and 0 <= gy < self.map_height:
                     # 左クリック(1)として処理
@@ -309,19 +327,50 @@ class DevState(State):
         self.save_btn.draw(surface)
         self.test_play_btn.draw(surface)
 
-        # ブラシパレット
+        # ブラシパレットラベル
         brush_label = self.font.render(
-            f"Current: {self.current_brush['label']}", True, COLOR_GREEN
+            f"Palette: {self.current_brush['label']}", True, COLOR_GREEN
         )
         surface.blit(brush_label, (20, 210))
 
-        for btn in self.brush_buttons:
-            if (
-                "label" in self.current_brush
-                and btn.text == self.current_brush["label"]
-            ):
-                pygame.draw.rect(surface, COLOR_BLUE, btn.rect, 2)
-            btn.draw(surface)
+        # 画像パレット描画
+        for i, brush in enumerate(self.brushes):
+            r = i // self.palette_cols
+            c = i % self.palette_cols
+
+            x = self.palette_start_x + c * (
+                self.palette_tile_size + self.palette_margin
+            )
+            y = self.palette_start_y + r * (
+                self.palette_tile_size + self.palette_margin
+            )
+            rect = pygame.Rect(x, y, self.palette_tile_size, self.palette_tile_size)
+
+            # 枠線 (選択中なら赤、それ以外は白)
+            if self.current_brush == brush:
+                pygame.draw.rect(surface, (255, 0, 0), rect.inflate(6, 6), 3)
+            else:
+                pygame.draw.rect(surface, (100, 100, 100), rect, 1)
+
+            # 画像取得・描画
+            img = None
+            if brush["type"] == "tile":
+                val = brush["value"]
+                if val in self.tile_map.images:
+                    img = self.tile_map.images[val]
+            elif brush["type"] == "player":
+                val = brush["value"]
+                if val in self.tile_map.player_images:
+                    frames = self.tile_map.player_images[val]
+                    if frames:
+                        img = frames[0]
+
+            if img:
+                # パレットサイズに合わせてスケール
+                scaled_img = pygame.transform.scale(
+                    img, (self.palette_tile_size, self.palette_tile_size)
+                )
+                surface.blit(scaled_img, rect)
 
         # メッセージ
         msg_surf = self.font.render(self.message, True, COLOR_WHITE)
