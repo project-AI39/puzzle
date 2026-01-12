@@ -2,6 +2,8 @@ import pygame
 import json
 import os
 import datetime
+import tkinter as tk
+from tkinter import filedialog
 from src.core.state_machine import State
 from src.ui.widgets import Button
 from src.game.map import TileMap
@@ -46,8 +48,13 @@ class DevState(State):
             text="Save JSON",
             callback=self._on_save,
         )
-        self.test_play_btn = Button(
+        self.load_btn = Button(
             rect=(center_x - 100, 170, 200, 40),
+            text="Load JSON",
+            callback=self._on_load,
+        )
+        self.test_play_btn = Button(
+            rect=(center_x - 100, 230, 200, 40),
             text="Test Play",
             callback=self._on_test_play,
         )
@@ -73,7 +80,7 @@ class DevState(State):
 
         # パレット設定
         self.palette_start_x = 30
-        self.palette_start_y = 250
+        self.palette_start_y = 300
         self.palette_tile_size = 48  # 表示サイズ
         self.palette_cols = 8  # 1行あたりの数
         self.palette_margin = 10
@@ -166,6 +173,49 @@ class DevState(State):
             print(e)
             self.message = "Save Error."
 
+    def _on_load(self):
+        try:
+            # 隠しウィンドウの作成（rootウィンドウを出さないため）
+            root = tk.Tk()
+            root.withdraw()
+
+            # ファイルダイアログ表示
+            filepath = filedialog.askopenfilename(
+                title="Select Map File",
+                filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")],
+                initialdir="create_stage",  # デフォルトディレクトリ
+            )
+            root.destroy()  # ウィンドウ破棄
+
+            if filepath:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+
+                # マップデータ反映
+                self.map_data = data["map_data"]
+
+                # プレイヤーデータ反映
+                self.placed_players = []
+                if "players" in data:
+                    for p in data["players"]:
+                        # 新形式: playersリスト内の各要素に answer がある
+                        if "answer" in p:
+                            self.placed_players.append(
+                                {
+                                    "grid_x": p["answer"]["x"],
+                                    "grid_y": p["answer"]["y"],
+                                    "direction": p["direction"],
+                                }
+                            )
+
+                # タイルマップ再描画
+                self._refresh_tile_map()
+                self.message = f"Loaded: {os.path.basename(filepath)}"
+
+        except Exception as e:
+            print(f"Load Error: {e}")
+            self.message = "Load Error."
+
     def _on_test_play(self):
         if not self.placed_players:
             self.message = "No players placed!"
@@ -214,6 +264,7 @@ class DevState(State):
     def handle_event(self, event):
         self.clear_btn.handle_event(event)
         self.save_btn.handle_event(event)
+        self.load_btn.handle_event(event)
         self.test_play_btn.handle_event(event)
 
         # パレットクリック処理
@@ -335,6 +386,7 @@ class DevState(State):
 
         self.clear_btn.draw(surface)
         self.save_btn.draw(surface)
+        self.load_btn.draw(surface)
         self.test_play_btn.draw(surface)
 
         # ブラシパレットラベル
