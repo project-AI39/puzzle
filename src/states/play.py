@@ -16,7 +16,6 @@ from src.const import (
     GAME_STATE_SIMULATING,
     SIM_STEP_DELAY,
     SIM_ANIM_DURATION,
-    TILE_SIZE,
     INVENTORY_WIDTH,
     SIMULATION_TIMEOUT,
 )
@@ -99,6 +98,11 @@ class PlayState(State):
                 stage_data = self.custom_stage_data
                 self.tile_map = TileMap(stage_data["map_data"])
 
+                # 自動リサイズ (DevModeからのテストプレイ時も適用してOK)
+                play_area_w = SCREEN_WIDTH - INVENTORY_WIDTH
+                play_area_h = SCREEN_HEIGHT - 100  # ヘッダー分などを考慮
+                self.tile_map.fit_to_area(play_area_w, play_area_h)
+
                 # "answer" (正解配置/初期配置) が含まれている場合
                 if "answer" in stage_data:
                     # インベントリは空にする（全て配置済み）
@@ -124,7 +128,15 @@ class PlayState(State):
             else:
                 stage_data = self.loader.load_stage(self.current_level)
                 self.tile_map = TileMap(stage_data["map_data"])
+
+                # 自動リサイズ
+                play_area_w = SCREEN_WIDTH - INVENTORY_WIDTH
+                play_area_h = SCREEN_HEIGHT - 100
+                self.tile_map.fit_to_area(play_area_w, play_area_h)
+
                 self.inventory = Inventory(stage_data["players"][:])
+                # インベントリサイズもマップに合わせる
+                self.inventory.set_tile_size(self.tile_map.tile_size, INVENTORY_WIDTH)
 
                 if self.current_level == 1:
                     self.show_guide = True
@@ -151,7 +163,15 @@ class PlayState(State):
         try:
             # インベントリ初期化
             self.tile_map = TileMap(stage_data["map_data"])
+
+            # 自動リサイズ
+            play_area_w = SCREEN_WIDTH - INVENTORY_WIDTH
+            play_area_h = SCREEN_HEIGHT - 100
+            self.tile_map.fit_to_area(play_area_w, play_area_h)
+
             self.inventory = Inventory(stage_data["players"][:])
+            # インベントリサイズもマップに合わせる
+            self.inventory.set_tile_size(self.tile_map.tile_size, INVENTORY_WIDTH)
 
             # デモ開始
             self.demo_phase = "PLACING"
@@ -414,10 +434,20 @@ class PlayState(State):
         if self.tile_map:
             # マップ描画エリア (画面幅 - インベントリ幅)
             play_area_width = SCREEN_WIDTH - INVENTORY_WIDTH
+            play_area_height = SCREEN_HEIGHT
 
-            # マップをプレイエリアの中央に配置
-            map_x = (play_area_width - self.tile_map.width) // 2
-            map_y = (SCREEN_HEIGHT - self.tile_map.height) // 2
+            # 有効領域(=マップの中身)を画面中央に配置するためのオフセット計算
+            content_off_x, content_off_y, content_w, content_h = (
+                self.tile_map.get_content_info()
+            )
+
+            # 画面中央オフセット = 描画開始オフセット + content_off
+            # 描画開始オフセット = 画面中央オフセット - content_off
+            center_x = (play_area_width - content_w) // 2
+            center_y = (play_area_height - content_h) // 2
+
+            map_x = center_x - content_off_x
+            map_y = center_y - content_off_y
 
             # --- マップ描画 ---
             # シミュレーション中はTileMapの駒描画を一時的に無効化し、補間描画を行う
@@ -431,7 +461,6 @@ class PlayState(State):
                 self.tile_map.placed_pieces = real_placed_pieces  # 戻す
 
                 # アニメーション補間して描画
-                import src.const as c  # 定数参照用
 
                 # 等速直線運動 (t: 0.0 -> 1.0)
                 t = min(self.sim_timer / SIM_ANIM_DURATION, 1.0)
@@ -453,8 +482,8 @@ class PlayState(State):
                         lerp_gy = prev_gy + (curr_gy - prev_gy) * t
 
                         # 画面座標変換
-                        screen_x = map_x + lerp_gx * c.TILE_SIZE
-                        screen_y = map_y + lerp_gy * c.TILE_SIZE
+                        screen_x = map_x + lerp_gx * self.tile_map.tile_size
+                        screen_y = map_y + lerp_gy * self.tile_map.tile_size
 
                         # 画像取得 (TileMapの新しいplayer_imagesを使用)
                         direction = p["piece"]["direction"]
@@ -470,7 +499,12 @@ class PlayState(State):
                             pygame.draw.rect(
                                 surface,
                                 (255, 0, 0),
-                                (screen_x, screen_y, c.TILE_SIZE, c.TILE_SIZE),
+                                (
+                                    screen_x,
+                                    screen_y,
+                                    self.tile_map.tile_size,
+                                    self.tile_map.tile_size,
+                                ),
                             )
 
             # インベントリ領域の計算 (画面右端)
@@ -528,14 +562,23 @@ class PlayState(State):
 
                 # マップ描画オフセット (PlayState.draw内で計算されている値と同じ計算が必要)
                 # PlayState.draw内の変数はローカルなので再計算する
+                content_off_x, content_off_y, content_w, content_h = (
+                    self.tile_map.get_content_info()
+                )
                 play_area_width = SCREEN_WIDTH - INVENTORY_WIDTH
-                map_pixel_w = self.tile_map.width
-                map_pixel_h = self.tile_map.height
-                map_x = (play_area_width - map_pixel_w) // 2
-                map_y = (SCREEN_HEIGHT - map_pixel_h) // 2
+                play_area_height = SCREEN_HEIGHT
 
-                target_x = map_x + gx * TILE_SIZE + TILE_SIZE // 2
-                target_y = map_y + gy * TILE_SIZE + TILE_SIZE // 2
+                center_x = (play_area_width - content_w) // 2
+                center_y = (play_area_height - content_h) // 2
+                map_x = center_x - content_off_x
+                map_y = center_y - content_off_y
+
+                target_x = (
+                    map_x + gx * self.tile_map.tile_size + self.tile_map.tile_size // 2
+                )
+                target_y = (
+                    map_y + gy * self.tile_map.tile_size + self.tile_map.tile_size // 2
+                )
 
                 start_x, start_y = start_rect.center
 
@@ -570,13 +613,28 @@ class PlayState(State):
                 if start_rect and "answer" in target_piece:
                     ans = target_piece["answer"]
                     # マップオフセット再計算
-                    map_pixel_w = self.tile_map.width
-                    map_pixel_h = self.tile_map.height
-                    map_x = (play_area_width - map_pixel_w) // 2
-                    map_y = (SCREEN_HEIGHT - map_pixel_h) // 2
+                    # マップオフセット再計算
+                    content_off_x, content_off_y, content_w, content_h = (
+                        self.tile_map.get_content_info()
+                    )
+                    play_area_width = SCREEN_WIDTH - INVENTORY_WIDTH
+                    play_area_height = SCREEN_HEIGHT
 
-                    target_x = map_x + ans["x"] * TILE_SIZE + TILE_SIZE // 2
-                    target_y = map_y + ans["y"] * TILE_SIZE + TILE_SIZE // 2
+                    center_x = (play_area_width - content_w) // 2
+                    center_y = (play_area_height - content_h) // 2
+                    map_x = center_x - content_off_x
+                    map_y = center_y - content_off_y
+
+                    target_x = (
+                        map_x
+                        + ans["x"] * self.tile_map.tile_size
+                        + self.tile_map.tile_size // 2
+                    )
+                    target_y = (
+                        map_y
+                        + ans["y"] * self.tile_map.tile_size
+                        + self.tile_map.tile_size // 2
+                    )
                     start_x, start_y = start_rect.center
 
                     cur_x = start_x + (target_x - start_x) * t

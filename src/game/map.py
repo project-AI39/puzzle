@@ -23,6 +23,10 @@ class TileMap:
     def __init__(self, map_data: list[list[str]], img_dir="img"):
         self.map_data = map_data
         self.img_dir = img_dir
+
+        # タイルサイズ (デフォルトは定数)
+        self.tile_size = TILE_SIZE
+
         self.images = {}
         self.frame_image = None
         self.player_images = {}
@@ -34,8 +38,12 @@ class TileMap:
         self.cols = len(map_data[0]) if self.rows > 0 else 0
 
         # マップ全体のピクセルサイズ
-        self.width = self.cols * TILE_SIZE
-        self.height = self.rows * TILE_SIZE
+        self.width = self.cols * self.tile_size
+        self.height = self.rows * self.tile_size
+
+        # 有効領域の情報 (オフセットx, オフセットy, 幅, 高さ)
+        self.valid_area_offset = (0, 0)
+        self.valid_area_size = (self.width, self.height)
 
         # 配置された駒のリスト
         # 要素: {"grid_x": int, "grid_y": int, "piece": dict}
@@ -69,17 +77,18 @@ class TileMap:
         frame_path = os.path.join(self.img_dir, "frame0.png")
         if os.path.exists(frame_path):
             img = pygame.image.load(frame_path).convert_alpha()
-            if TILE_SIZE != 32:
-                img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
+            if self.tile_size != 32:
+                img = pygame.transform.scale(img, (self.tile_size, self.tile_size))
             self.frame_image = img
 
         for tile_id, filename in image_files.items():
             path = os.path.join(self.img_dir, filename)
             if os.path.exists(path):
                 img = pygame.image.load(path).convert_alpha()
+                img = pygame.image.load(path).convert_alpha()
                 # スケーリング
-                if TILE_SIZE != 32:
-                    img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
+                if self.tile_size != 32:
+                    img = pygame.transform.scale(img, (self.tile_size, self.tile_size))
                 self.images[tile_id] = img
             else:
                 print(f"Warning: Image not found for tile {tile_id}: {path}")
@@ -95,8 +104,10 @@ class TileMap:
                 path = os.path.join(self.img_dir, filename)
                 if os.path.exists(path):
                     img = pygame.image.load(path).convert_alpha()
-                    if TILE_SIZE != 32:
-                        img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
+                    if self.tile_size != 32:
+                        img = pygame.transform.scale(
+                            img, (self.tile_size, self.tile_size)
+                        )
                     frames.append(img)
                 else:
                     # 最初のフレームが見つからない場合は警告、それ以外は無視（フレーム数不足許容）
@@ -111,10 +122,79 @@ class TileMap:
         rel_x = screen_x - self.last_offset_x
         rel_y = screen_y - self.last_offset_y
 
-        grid_x = rel_x // TILE_SIZE
-        grid_y = rel_y // TILE_SIZE
+        grid_x = rel_x // self.tile_size
+        grid_y = rel_y // self.tile_size
 
         return grid_x, grid_y
+
+    def get_content_info(self):
+        """有効領域の情報を返す (off_x, off_y, width, height)"""
+        off_x, off_y = self.valid_area_offset
+        w, h = self.valid_area_size
+        return off_x, off_y, w, h
+
+    def fit_to_area(self, max_width, max_height):
+        """指定された領域に収まるようにタイルサイズを調整"""
+        # 1. 有効範囲の検出 (PIT/NULL以外)
+        min_c, max_c = self.cols, -1
+        min_r, max_r = self.rows, -1
+        has_valid_tiles = False
+
+        for r, row in enumerate(self.map_data):
+            for c, tile_id in enumerate(row):
+                if tile_id != TILE_PIT and tile_id != TILE_NULL:
+                    if r < min_r:
+                        min_r = r
+                    if r > max_r:
+                        max_r = r
+                    if c < min_c:
+                        min_c = c
+                    if c > max_c:
+                        max_c = c
+                    has_valid_tiles = True
+
+        if not has_valid_tiles:
+            # 有効タイルがない場合は全体を有効とする
+            min_r, max_r = 0, self.rows - 1
+            min_c, max_c = 0, self.cols - 1
+
+        # 2. 有効範囲のサイズ
+        content_cols = max_c - min_c + 1
+        content_rows = max_r - min_r + 1
+
+        # 3. 最適サイズの計算
+        # マージンを少しとる（例えば各辺20px）
+        avail_w = max_width - 40
+        avail_h = max_height - 40
+
+        if avail_w <= 0 or avail_h <= 0:
+            return  # 領域が小さすぎる
+
+        scale_x = avail_w / content_cols
+        scale_y = avail_h / content_rows
+        new_size = int(min(scale_x, scale_y))
+
+        # サイズ制限
+        new_size = max(32, new_size)
+
+        # 4. 適用
+        self.tile_size = new_size
+        self.width = self.cols * self.tile_size
+        self.height = self.rows * self.tile_size
+
+        self.valid_area_offset = (min_c * self.tile_size, min_r * self.tile_size)
+        self.valid_area_size = (
+            content_cols * self.tile_size,
+            content_rows * self.tile_size,
+        )
+
+        print(
+            f"Resized Map: tile_size={new_size}, content=({content_cols}x{content_rows})"
+        )
+
+        # 画像リロード
+        self._load_images()
+        self._load_player_images()
 
     def is_valid_tile(self, grid_x, grid_y):
         """指定されたグリッド座標が有効な配置場所か判定"""
@@ -148,8 +228,8 @@ class TileMap:
         # タイル描画
         for r, row in enumerate(self.map_data):
             for c, tile_id in enumerate(row):
-                x = offset_x + c * TILE_SIZE
-                y = offset_y + r * TILE_SIZE
+                x = offset_x + c * self.tile_size
+                y = offset_y + r * self.tile_size
 
                 # ゴールやワープの下に床を描画
                 if tile_id == TILE_GOAL or tile_id.startswith("008"):
@@ -176,8 +256,8 @@ class TileMap:
             if frames and len(frames) > 0:
                 # 静止中はフレーム0を表示
                 img = frames[0]
-                x = offset_x + grid_x * TILE_SIZE
-                y = offset_y + grid_y * TILE_SIZE
+                x = offset_x + grid_x * self.tile_size
+                y = offset_y + grid_y * self.tile_size
                 surface.blit(img, (x, y))
 
     def reset_pieces(self):
