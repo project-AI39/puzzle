@@ -115,12 +115,12 @@ class PlayState(State):
                         self.game_state = GAME_STATE_PLACING
                 else:
                     # 通常のテストプレイ（手動配置）
-                    self.inventory = Inventory(stage_data["players"])
+                    self.inventory = Inventory(stage_data["players"][:])
 
             else:
                 stage_data = self.loader.load_stage(self.current_level)
                 self.tile_map = TileMap(stage_data["map_data"])
-                self.inventory = Inventory(stage_data["players"])
+                self.inventory = Inventory(stage_data["players"][:])
 
                 if self.current_level == 1:
                     self.show_guide = True
@@ -147,7 +147,7 @@ class PlayState(State):
         try:
             # インベントリ初期化
             self.tile_map = TileMap(stage_data["map_data"])
-            self.inventory = Inventory(stage_data["players"])
+            self.inventory = Inventory(stage_data["players"][:])
 
             # デモ開始
             self.demo_phase = "PLACING"
@@ -344,6 +344,19 @@ class PlayState(State):
                         return
                     elif self.sim_last_result == "LOSE":
                         print("Example Failed... Resetting.")
+
+                        if self.custom_stage_data:
+                            # テストプレイで失敗 -> 開発者モードに戻る
+                            from src.states.dev import DevState
+
+                            print("Test Play Failed! Returning to Dev Mode.")
+                            self.manager.change_state(
+                                DevState(
+                                    self.manager, initial_data=self.custom_stage_data
+                                )
+                            )
+                            return
+
                         # テストプレイで失敗（答え再生なのに失敗？）
                         # まあリセットして再試行できるようにenter()を呼ぶ
                         self.enter()

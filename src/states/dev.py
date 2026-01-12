@@ -181,12 +181,22 @@ class DevState(State):
             )
 
         # テストプレイ用データ
+        # PlayStateが「初期配置済み」と認識するように answer キーを入れる
+        answer_export = []
+        for p in self.placed_players:
+            answer_export.append(
+                {
+                    "grid_x": p["grid_x"],
+                    "grid_y": p["grid_y"],
+                    "piece": {"direction": p["direction"]},
+                }
+            )
+
         stage_data = {
             "map_data": self.map_data,
             "players": players_export,
-            # "auto_play": True を入れると答え合わせモードになるが、
-            # PlayStateはトップレベル answer を見て auto_play 判断するため注意。
-            # 形式統一のため、一旦手動プレイで開始させる。
+            "answer": answer_export,
+            # auto_play: True にすると自動再生になるが、ここは配置済みからの手動プレイ
         }
 
         print("Starting Test Play...")
