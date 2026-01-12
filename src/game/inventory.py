@@ -89,3 +89,26 @@ class Inventory:
                 self.drawn_items.append({"rect": rect, "piece": player})
 
                 current_y += TILE_SIZE + item_spacing
+
+    def get_item_rect(
+        self, index: int, inventory_rect: pygame.Rect
+    ) -> pygame.Rect | None:
+        """指定インデックスのアイテムの矩形を取得"""
+        if index < 0 or index >= len(self.players_data):
+            return None
+
+        count = len(self.players_data)
+        item_spacing = 20
+        total_height = (
+            count * TILE_SIZE + (count - 1) * item_spacing if count > 0 else 0
+        )
+
+        # 垂直方向の中央揃えのための開始Y座標
+        start_y = inventory_rect.centery - total_height // 2
+
+        # アイテムのX座標（インベントリ領域の中央）
+        item_x = inventory_rect.centerx - TILE_SIZE // 2
+
+        current_y = start_y + index * (TILE_SIZE + item_spacing)
+
+        return pygame.Rect(item_x, current_y, TILE_SIZE, TILE_SIZE)

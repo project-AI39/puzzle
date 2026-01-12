@@ -16,10 +16,8 @@ from src.const import (
     COLOR_BLACK,
     COLOR_BLUE,
     COLOR_WHITE,
-    COLOR_RED,
     COLOR_GREEN,
     TILE_NORMAL,
-    TILE_NULL,
     TILE_GOAL,
     TILE_PIT,
     TILE_WARP,
@@ -61,7 +59,7 @@ class DevState(State):
 
         # 2. ブラシ選択 (パレット)
         self.brushes = [
-            {"label": "Wall", "value": TILE_NULL, "type": "tile"},
+            # Wall (TILE_NULL) Removed as requested - unify with Pit
             {"label": "Floor", "value": TILE_NORMAL, "type": "tile"},
             {"label": "Goal", "value": TILE_GOAL, "type": "tile"},
             {"label": "Pit", "value": TILE_PIT, "type": "tile"},
@@ -69,7 +67,7 @@ class DevState(State):
             {"label": "Arrow D", "value": TILE_DOWN, "type": "tile"},
             {"label": "Arrow L", "value": TILE_LEFT, "type": "tile"},
             {"label": "Arrow R", "value": TILE_RIGHT, "type": "tile"},
-            {"label": "Warp 0", "value": "00800", "type": "tile"},
+            {"label": "Warp 0", "value": TILE_WARP, "type": "tile"},
             {"label": "Warp 1", "value": "00801", "type": "tile"},
             {"label": "Warp 2", "value": "00802", "type": "tile"},
             {"label": "Warp 3", "value": "00803", "type": "tile"},
@@ -99,7 +97,7 @@ class DevState(State):
             )
             self.brush_buttons.append(btn)
 
-        self.current_brush = self.brushes[1]  # Default: Floor
+        self.current_brush = self.brushes[0]  # Default: Floor
 
         # マッセージ
         self.message = "Map Editor: Paint tiles freely."
@@ -109,7 +107,7 @@ class DevState(State):
         self.map_width = 15
         self.map_height = 10
         self.map_data = [
-            [TILE_NULL for _ in range(self.map_width)] for _ in range(self.map_height)
+            [TILE_PIT for _ in range(self.map_width)] for _ in range(self.map_height)
         ]
         # プレイヤー管理: [{"grid_x":, "grid_y":, "direction": ...}]
         self.placed_players = []
@@ -123,7 +121,7 @@ class DevState(State):
 
     def _on_clear(self):
         self.map_data = [
-            [TILE_NULL for _ in range(self.map_width)] for _ in range(self.map_height)
+            [TILE_PIT for _ in range(self.map_width)] for _ in range(self.map_height)
         ]
         self.placed_players = []
         self._refresh_tile_map()
@@ -227,16 +225,6 @@ class DevState(State):
             mx, my = event.pos
             # マップエリア内か判定 (右側)
             if mx > self.panel_width:
-                # 座標変換
-                area_w = SCREEN_WIDTH - self.panel_width
-                map_pixel_w = self.tile_map.width
-                map_pixel_h = self.tile_map.height
-
-                # offsetはdraw実行時に決まるが、ここでは計算して使う
-                # DevState.drawと同じロジックならズレない
-                offset_x = self.panel_width + (area_w - map_pixel_w) // 2
-                offset_y = (SCREEN_HEIGHT - map_pixel_h) // 2
-
                 # TileMap.get_grid_posは内部状態(last_offset)を使うので
                 # 前回draw時のオフセットが使われる。
                 # 画面サイズが変わらなければ問題ない。
@@ -267,7 +255,7 @@ class DevState(State):
                 self.map_data[gy][gx] = new_val
                 # タイルが変わったらその上のプレイヤー削除 (Wall/Pit/Loop対策など、基本は置いたタイルの整合性を取る)
                 # 特にNULL/PITにした場合はプレイヤー落とす
-                if new_val == TILE_NULL or new_val == TILE_PIT:
+                if new_val == TILE_PIT:
                     self.placed_players = [
                         p
                         for p in self.placed_players
@@ -295,7 +283,7 @@ class DevState(State):
                     {"grid_x": gx, "grid_y": gy, "direction": direction}
                 )
                 # その下のタイルをNormalにする
-                if self.map_data[gy][gx] == TILE_NULL:
+                if self.map_data[gy][gx] == TILE_PIT:
                     self.map_data[gy][gx] = TILE_NORMAL
                 tile_changed = True
 
@@ -309,7 +297,10 @@ class DevState(State):
                 self.message = ""
 
     def draw(self, surface):
-        surface.fill(COLOR_BLACK)
+        if self.manager.app.bg_image:
+            surface.blit(self.manager.app.bg_image, (0, 0))
+        else:
+            surface.fill(COLOR_BLACK)
 
         # パネル背景
         pygame.draw.rect(surface, (30, 30, 30), (0, 0, self.panel_width, SCREEN_HEIGHT))

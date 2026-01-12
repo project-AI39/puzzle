@@ -54,6 +54,10 @@ class PlayState(State):
         self.sim_last_result = "CONTINUE"
         self.prev_player_positions = []  # アニメーション用: 各プレイヤーの移動前座標 [{"x": int, "y": int}]
 
+        # ガイド用
+        self.show_guide = False
+        self.guide_timer = 0
+
     def enter(self):
         print("プレイモードに遷移しました")
         self.inactivity_timer = 0
@@ -64,6 +68,9 @@ class PlayState(State):
         self.game_state = GAME_STATE_PLACING
         self.simulator = None
         self.sim_timer = 0
+
+        self.show_guide = False
+        self.guide_timer = 0
 
         # ステージ読み込み（リセットも兼ねてここで読み込む）
         try:
@@ -99,6 +106,9 @@ class PlayState(State):
                 self.tile_map = TileMap(stage_data["map_data"])
                 self.inventory = Inventory(stage_data["players"])
 
+                if self.current_level == 1:
+                    self.show_guide = True
+
         except Exception as e:
             print(f"Error loading stage {self.current_level}: {e}")
 
@@ -114,12 +124,14 @@ class PlayState(State):
                     dy = event.pos[1] - self.drag_start_pos[1]
                     if (dx * dx + dy * dy) > self.drag_threshold**2:
                         self.is_dragging = True
+                        self.show_guide = False  # ドラッグ開始でも消す
 
         # マウスボタンダウン (掴む処理)
         if event.type == pygame.MOUSEBUTTONDOWN:
             if (
                 event.button == 1 and self.game_state == GAME_STATE_PLACING
             ):  # 左クリックかつ配置モード
+                self.show_guide = False  # 操作開始で消す
                 if self.held_piece:
                     # 既に掴んでいる場合は配置試行（クリック＆クリック操作の2回目）
                     self._try_place_piece(event.pos)
@@ -201,6 +213,10 @@ class PlayState(State):
 
             self.manager.change_state(ConfirmContinueState(self.manager))
 
+        # ガイド更新
+        if self.show_guide:
+            self.guide_timer += dt
+
         # シミュレーション更新
         if self.game_state == GAME_STATE_SIMULATING:
             self.sim_timer += dt
@@ -241,7 +257,10 @@ class PlayState(State):
                 self.sim_last_result = self.simulator.step()
 
     def draw(self, surface):
-        surface.fill(COLOR_BLACK)
+        if self.manager.app.bg_image:
+            surface.blit(self.manager.app.bg_image, (0, 0))
+        else:
+            surface.fill(COLOR_BLACK)
 
         if self.tile_map:
             # マップ描画エリア (画面幅 - インベントリ幅)
@@ -327,3 +346,56 @@ class PlayState(State):
             if img:
                 rect = img.get_rect(center=(mx, my))
                 surface.blit(img, rect)
+
+        # Level 1 ガイドアニメーション (インベントリ -> マップ配置)
+        if (
+            self.show_guide
+            and self.inventory
+            and self.tile_map
+            and self.manager.app.cursor_img
+        ):
+            # アニメーション周期 (2秒: 1秒移動、1秒待機)
+            cycle = 2000
+            t = (self.guide_timer % cycle) / 1000.0  # 0.0 - 2.0
+
+            # 始点: インベントリの先頭アイテム
+            start_rect = self.inventory.get_item_rect(
+                0,
+                pygame.Rect(
+                    SCREEN_WIDTH - INVENTORY_WIDTH, 0, INVENTORY_WIDTH, SCREEN_HEIGHT
+                ),
+            )
+
+            # 終点: 正解位置
+            # インベントリ内のデータに answer がある前提
+            players = self.inventory.players_data
+            if start_rect and players and len(players) > 0 and "answer" in players[0]:
+                ans = players[0]["answer"]
+                gx, gy = ans["x"], ans["y"]
+
+                # マップ描画オフセット (PlayState.draw内で計算されている値と同じ計算が必要)
+                # PlayState.draw内の変数はローカルなので再計算する
+                play_area_width = SCREEN_WIDTH - INVENTORY_WIDTH
+                map_pixel_w = self.tile_map.width
+                map_pixel_h = self.tile_map.height
+                map_x = (play_area_width - map_pixel_w) // 2
+                map_y = (SCREEN_HEIGHT - map_pixel_h) // 2
+
+                target_x = map_x + gx * TILE_SIZE + TILE_SIZE // 2
+                target_y = map_y + gy * TILE_SIZE + TILE_SIZE // 2
+
+                start_x, start_y = start_rect.center
+
+                # 現在位置の計算
+                cur_x, cur_y = start_x, start_y
+                if t < 1.0:
+                    # 移動フェーズ (Ease-outっぽい動きにするとリッチだがまずは線形)
+                    # t = 0.0 -> start, t = 1.0 -> target
+                    cur_x = start_x + (target_x - start_x) * t
+                    cur_y = start_y + (target_y - start_y) * t
+                else:
+                    # 待機フェーズ (target位置で止まる)
+                    cur_x, cur_y = target_x, target_y
+
+                # カーソル画像の描画 (左上が基準なので少しずらす？ mouse.pngのホットスポットによるが、とりあえずそのまま)
+                surface.blit(self.manager.app.cursor_img, (cur_x, cur_y))

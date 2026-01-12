@@ -57,7 +57,10 @@ class ConfirmContinueState(State):
             self.manager.change_state(AttractState(self.manager))
 
     def draw(self, surface):
-        surface.fill(COLOR_BLACK)
+        if self.manager.app.bg_image:
+            surface.blit(self.manager.app.bg_image, (0, 0))
+        else:
+            surface.fill(COLOR_BLACK)
         text = self.font.render("CONTINUE?", True, COLOR_RED)
         rect = text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
         surface.blit(text, rect)

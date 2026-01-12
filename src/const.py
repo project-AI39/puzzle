@@ -31,7 +31,7 @@ PLAY_TIMEOUT = 60000  # プレイ中の無操作タイムアウト (1分)
 CONFIRM_TIMEOUT = 10000  # コンティニュー確認のタイムアウト (10秒)
 MOUSE_MOVE_THRESHOLD = 100  # マウス移動検知の閾値 (ピクセル移動量の累積など)
 
-STRING_TITLE = "Puzzle Game"
+STRING_TITLE = "Logic Trail"
 
 # タイルID
 TILE_NULL = "00000"  # 壁・無効エリア
@@ -53,5 +53,5 @@ GAME_STATE_PLACING = "placing"
 GAME_STATE_SIMULATING = "simulating"
 
 # 描画設定
-TILE_SIZE = 96  # タイルの描画サイズ (px)
+TILE_SIZE = 64  # タイルの描画サイズ (px)
 INVENTORY_WIDTH = 250  # インベントリ幅

@@ -5,6 +5,7 @@
 
 import pygame
 import sys
+import os
 from src.const import SCREEN_WIDTH, SCREEN_HEIGHT, STRING_TITLE, FPS
 from src.core.state_machine import StateMachine
 from src.states.attract import AttractState
@@ -25,6 +26,20 @@ class GameApp:
         self.state_machine = StateMachine(self)
         self.running = True
 
+        # 背景画像の読み込み
+        self.bg_image = None
+        bg_path = os.path.join("img", "bg.png")
+        if os.path.exists(bg_path):
+            img = pygame.image.load(bg_path).convert()
+            self.bg_image = pygame.transform.scale(img, (SCREEN_WIDTH, SCREEN_HEIGHT))
+
+        # マウスカーソル画像の読み込み
+        self.cursor_img = None
+        cursor_path = os.path.join("img", "mouse.png")
+        if os.path.exists(cursor_path):
+            self.cursor_img = pygame.image.load(cursor_path).convert_alpha()
+            pygame.mouse.set_visible(False)
+
     def run(self):
         # アトラクトモードから開始
         self.state_machine.change_state(AttractState(self.state_machine))
@@ -42,6 +57,12 @@ class GameApp:
 
             self.state_machine.update(dt)
             self.state_machine.draw(self.screen)
+
+            # カスタムカーソルの描画
+            if self.cursor_img:
+                mx, my = pygame.mouse.get_pos()
+                self.screen.blit(self.cursor_img, (mx, my))
+
             pygame.display.flip()
 
         pygame.quit()

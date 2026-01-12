@@ -4,9 +4,7 @@
 # RELEVANT FILES: src/const.py, src/game/map.py
 
 from src.const import (
-    TILE_NORMAL,
     TILE_GOAL,
-    TILE_WARP,
     TILE_UP,
     TILE_DOWN,
     TILE_RIGHT,
@@ -113,17 +111,17 @@ class Simulator:
             new_states.append(state_update)
 
         # 2. 衝突判定 & マップ外/奈落判定
+        # 判定結果を一時保存し、座標更新は必ず行う
+        next_status_candidate = "CONTINUE"
 
         # 座標の検証 (マップ外と奈落)
         for ns in new_states:
             if not self._is_within_bounds(ns["grid_x"], ns["grid_y"]):
-                self.status = "LOSE"
-                return self.status
+                next_status_candidate = "LOSE"
 
             tile_id = self._get_tile_at(ns["grid_x"], ns["grid_y"])
             if tile_id == TILE_PIT:
-                self.status = "LOSE"
-                return self.status
+                next_status_candidate = "LOSE"
 
         # 衝突判定 (Player vs Player)
         # 同じ座標に2人以上いるか
@@ -134,8 +132,7 @@ class Simulator:
 
         for count in pos_counts.values():
             if count > 1:
-                self.status = "LOSE"  # 衝突
-                return self.status
+                next_status_candidate = "LOSE"  # 衝突
 
         # 正面衝突 (Swap) 判定
         for i, ns in enumerate(new_states):
@@ -151,11 +148,9 @@ class Simulator:
                 other_new_pos = (other_ns["grid_x"], other_ns["grid_y"])
 
                 if old_pos == other_new_pos and new_pos == other_old_pos:
-                    self.status = "LOSE"  # 正面衝突
-                    return self.status
+                    next_status_candidate = "LOSE"  # 正面衝突
 
-        # 3. 座標確定とタイル効果適用 (矢印のみ)
-        # ワープとゴールは移動ロジック内で処理済み
+        # 3. 座標確定とタイル効果適用
         goal_count = 0
 
         for i, ns in enumerate(new_states):
@@ -172,12 +167,13 @@ class Simulator:
             if tile_id == TILE_GOAL:
                 goal_count += 1
 
-            # 旧ロジックの矢印判定等は削除済み
-            # ワープIDの扱いは移動ロジックで済んでいるのでここでは何もしない
-
-        # 4. 勝利判定
-        if goal_count == len(self.players):
+        # 4. 勝利・敗北判定の確定
+        if next_status_candidate == "LOSE":
+            self.status = "LOSE"
+        elif goal_count == len(self.players):
             self.status = "WIN"
+        else:
+            self.status = "CONTINUE"
 
         return self.status
 

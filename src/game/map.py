@@ -24,6 +24,7 @@ class TileMap:
         self.map_data = map_data
         self.img_dir = img_dir
         self.images = {}
+        self.frame_image = None
         self.player_images = {}
         self._load_images()
         self._load_player_images()
@@ -50,7 +51,7 @@ class TileMap:
         # 32x32の画像を読み込み、TILE_SIZE (64x64) にスケールする
         image_files = {
             TILE_NULL: "null_tile.png",
-            TILE_PIT: "pit.png",  # 画像がない場合は黒背景になる
+            TILE_PIT: "null_tile.png",
             TILE_NORMAL: "normal0_tile.png",
             TILE_GOAL: "goal0_tile.png",
             TILE_UP: "uparrow0_tile.png",
@@ -58,11 +59,19 @@ class TileMap:
             TILE_RIGHT: "rightarrow0_tile.png",
             TILE_LEFT: "leftarrow0_tile.png",
             # TILE_WARP (00800) is base, but we load teleport0-3 explicitly
-            "00800": "teleport0_tile.png",
+            TILE_WARP: "teleport0_tile.png",
             "00801": "teleport1_tile.png",
             "00802": "teleport2_tile.png",
             "00803": "teleport3_tile.png",
         }
+
+        # 枠画像の読み込み
+        frame_path = os.path.join(self.img_dir, "frame0.png")
+        if os.path.exists(frame_path):
+            img = pygame.image.load(frame_path).convert_alpha()
+            if TILE_SIZE != 32:
+                img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
+            self.frame_image = img
 
         for tile_id, filename in image_files.items():
             path = os.path.join(self.img_dir, filename)
@@ -139,16 +148,23 @@ class TileMap:
         # タイル描画
         for r, row in enumerate(self.map_data):
             for c, tile_id in enumerate(row):
-                draw_id = tile_id
-                # Warp Special Handling removed: "008xx" is mapped directly in images
-                # if tile_id.startswith("008"):
-                #     draw_id = TILE_WARP
+                x = offset_x + c * TILE_SIZE
+                y = offset_y + r * TILE_SIZE
 
-                img = self.images.get(draw_id)
+                # ゴールやワープの下に床を描画
+                if tile_id == TILE_GOAL or tile_id.startswith("008"):
+                    normal_img = self.images.get(TILE_NORMAL)
+                    if normal_img:
+                        surface.blit(normal_img, (x, y))
+
+                # タイル描画
+                img = self.images.get(tile_id)
                 if img:
-                    x = offset_x + c * TILE_SIZE
-                    y = offset_y + r * TILE_SIZE
                     surface.blit(img, (x, y))
+
+                # 枠描画 (奈落以外)
+                if tile_id != TILE_PIT and tile_id != TILE_NULL and self.frame_image:
+                    surface.blit(self.frame_image, (x, y))
 
         # 配置された駒の描画
         for p in self.placed_pieces:
