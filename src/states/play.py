@@ -58,6 +58,11 @@ class PlayState(State):
         self.show_guide = False
         self.guide_timer = 0
 
+        # デモモード用
+        self.is_demo = False
+        self.demo_phase = "IDLE"
+        self.demo_timer = 0
+
     def enter(self):
         print("プレイモードに遷移しました")
         self.inactivity_timer = 0
@@ -71,6 +76,9 @@ class PlayState(State):
 
         self.show_guide = False
         self.guide_timer = 0
+
+        # デモモードはデフォルトOFF
+        self.is_demo = False
 
         # ステージ読み込み（リセットも兼ねてここで読み込む）
         try:
@@ -111,6 +119,33 @@ class PlayState(State):
 
         except Exception as e:
             print(f"Error loading stage {self.current_level}: {e}")
+
+    def setup_demo(self, stage_data):
+        """デモモード用にステージをロードして初期化"""
+        self.is_demo = True
+        self.custom_stage_data = stage_data
+        self.current_level = 0  # 無視されるが念のため
+
+        # enter() と同様の初期化を行うが、自動プレイを前提とする
+        self.inactivity_timer = 0
+        self.last_mouse_pos = pygame.mouse.get_pos()
+        self.held_piece = None
+        self.game_state = GAME_STATE_PLACING
+        self.simulator = None
+        self.sim_timer = 0
+        self.show_guide = False  # デモ中ガイドは不要
+
+        try:
+            # インベントリ初期化
+            self.tile_map = TileMap(stage_data["map_data"])
+            self.inventory = Inventory(stage_data["players"])
+
+            # デモ開始
+            self.demo_phase = "PLACING"
+            self.demo_timer = 0
+            print("Demo Setup Complete")
+        except Exception as e:
+            print(f"Error setup_demo: {e}")
 
     def handle_event(self, event):
         # マウスが動いたらタイマーリセット
@@ -203,7 +238,44 @@ class PlayState(State):
             {"x": p["grid_x"], "y": p["grid_y"]} for p in self.tile_map.placed_pieces
         ]
 
+    def _update_demo(self, dt):
+        """デモモードの更新処理"""
+        if self.demo_phase == "PLACING":
+            self.demo_timer += dt
+            place_interval = 1500
+
+            if self.inventory and len(self.inventory.players_data) > 0:
+                if self.demo_timer >= place_interval:
+                    piece_data = self.inventory.players_data[0]
+                    if "answer" in piece_data:
+                        ans = piece_data["answer"]
+                        piece = {"direction": piece_data["direction"]}
+                        self.tile_map.place_piece(ans["x"], ans["y"], piece)
+                    self.inventory.remove_piece(piece_data)
+                    self.demo_timer = 0
+            else:
+                self._start_simulation()
+                self.demo_phase = "SIMULATING"
+
+        elif self.demo_phase == "SIMULATING":
+            self.sim_timer += dt
+            if self.sim_timer >= SIM_STEP_DELAY:
+                if self.sim_last_result in ["WIN", "LOSE"]:
+                    self.demo_phase = "DONE"
+                    return  # 終了
+
+                self.sim_timer = 0
+                self.prev_player_positions = [
+                    {"x": p["grid_x"], "y": p["grid_y"]}
+                    for p in self.tile_map.placed_pieces
+                ]
+                self.sim_last_result = self.simulator.step()
+
     def update(self, dt):
+        if self.is_demo:
+            self._update_demo(dt)
+            return
+
         # フレームごとに無操作タイマーを加算
         # handle_eventでリセットされない限り加算され続ける
         self.inactivity_timer += dt
@@ -234,8 +306,18 @@ class PlayState(State):
                         self.manager.change_state(DevState(self.manager))
                         return
 
-                    self.current_level += 1
-                    self.enter()
+                    # 次のレベルがあるか確認
+                    next_level = self.current_level + 1
+                    available_levels = self.loader.get_available_levels()
+
+                    if next_level in available_levels:
+                        self.current_level = next_level
+                        self.enter()
+                    else:
+                        # 全ステージクリア -> ゲームクリア画面へ
+                        from src.states.game_clear import GameClearState
+
+                        self.manager.change_state(GameClearState(self.manager))
                     return
                 elif self.sim_last_result == "LOSE":
                     print("Example Failed... Resetting.")
@@ -399,3 +481,37 @@ class PlayState(State):
 
                 # カーソル画像の描画 (左上が基準なので少しずらす？ mouse.pngのホットスポットによるが、とりあえずそのまま)
                 surface.blit(self.manager.app.cursor_img, (cur_x, cur_y))
+
+        # デモモードの配置アニメーション
+        if self.is_demo and self.demo_phase == "PLACING" and self.inventory:
+            if len(self.inventory.players_data) > 0:
+                t = self.demo_timer / 1000.0
+                if t > 1.0:
+                    t = 1.0
+
+                target_piece = self.inventory.players_data[0]
+                play_area_width = SCREEN_WIDTH - INVENTORY_WIDTH
+                inv_rect = pygame.Rect(
+                    play_area_width, 0, INVENTORY_WIDTH, SCREEN_HEIGHT
+                )
+                start_rect = self.inventory.get_item_rect(0, inv_rect)
+
+                if start_rect and "answer" in target_piece:
+                    ans = target_piece["answer"]
+                    # マップオフセット再計算
+                    map_pixel_w = self.tile_map.width
+                    map_pixel_h = self.tile_map.height
+                    map_x = (play_area_width - map_pixel_w) // 2
+                    map_y = (SCREEN_HEIGHT - map_pixel_h) // 2
+
+                    target_x = map_x + ans["x"] * TILE_SIZE + TILE_SIZE // 2
+                    target_y = map_y + ans["y"] * TILE_SIZE + TILE_SIZE // 2
+                    start_x, start_y = start_rect.center
+
+                    cur_x = start_x + (target_x - start_x) * t
+                    cur_y = start_y + (target_y - start_y) * t
+
+                    img = self.inventory.images.get(target_piece["direction"])
+                    if img:
+                        rect = img.get_rect(center=(cur_x, cur_y))
+                        surface.blit(img, rect)

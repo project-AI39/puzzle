@@ -97,10 +97,12 @@ class Simulator:
                     current_x, current_y, p["piece"]["direction"]
                 )
 
-                # 壁判定 (NULLは壁とみなす -> 移動しない)
-                next_tile = self._get_tile_at(nx, ny)
-                if next_tile == TILE_NULL:
-                    nx, ny = current_x, current_y  # 壁ドン停止
+                # 範囲外なら移動許可（後にLOSE判定になる）、範囲内のみ壁判定
+                if self._is_within_bounds(nx, ny):
+                    # 壁判定 (NULLは壁とみなす -> 移動しない)
+                    next_tile = self._get_tile_at(nx, ny)
+                    if next_tile == TILE_NULL:
+                        nx, ny = current_x, current_y  # 壁ドン停止
 
                 state_update["grid_x"] = nx
                 state_update["grid_y"] = ny

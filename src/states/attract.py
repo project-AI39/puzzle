@@ -5,6 +5,7 @@
 
 import pygame
 import math
+import random
 from src.core.state_machine import State
 from src.const import (
     SCREEN_WIDTH,
@@ -14,6 +15,8 @@ from src.const import (
     COLOR_GRAY,
     MOUSE_MOVE_THRESHOLD,
 )
+from src.game.loader import StageLoader
+from src.states.play import PlayState
 
 
 class AttractState(State):
@@ -21,13 +24,45 @@ class AttractState(State):
         super().__init__(manager)
         self.font = pygame.font.SysFont("Arial", 48)
         self.sub_font = pygame.font.SysFont("Arial", 24)
+
         self.accumulated_move = 0.0  # 累積移動距離
         self.last_mouse_pos = None
 
+        # PlayStateをサブステートとして持つ（デモ再生用）
+        self.play_state = PlayState(manager)
+        self.loader = StageLoader()
+
+        self.demo_wait_timer = 0
+        self.is_waiting_next = False
+
     def enter(self):
-        print("アトラクトモードに遷移しました")
+        print("アトラクトモード(Delegated to PlayState)に遷移しました")
         self.accumulated_move = 0.0
         self.last_mouse_pos = pygame.mouse.get_pos()
+        self._start_new_demo()
+
+    def _start_new_demo(self):
+        """新しいステージをランダムに選んでデモ開始"""
+        levels = self.loader.get_available_levels()
+        if not levels:
+            print("No levels found for demo.")
+            return
+
+        level = random.choice(levels)
+        try:
+            stage_data = self.loader.load_stage(level)
+
+            # PlayStateにデモ設定をロードさせる
+            self.play_state.setup_demo(stage_data)
+
+            self.is_waiting_next = False
+            self.demo_wait_timer = 0
+
+            print(f"Demo started: Level {level}")
+
+        except Exception as e:
+            print(f"Error starting demo level {level}: {e}")
+            self.is_waiting_next = True  # エラー時はすぐ次へ
 
     def handle_event(self, event):
         # マウス移動の検知（閾値以上でタイトルへ）
@@ -54,7 +89,20 @@ class AttractState(State):
                 self.manager.change_state(DevState(self.manager))
 
     def update(self, dt):
-        pass
+        # デモ終了待ち
+        if self.is_waiting_next:
+            self.demo_wait_timer += dt
+            if self.demo_wait_timer > 2000:  # 2秒待機
+                self._start_new_demo()
+            return
+
+        # PlayStateの更新
+        self.play_state.update(dt)
+
+        # PlayStateのデモが終了したかチェック
+        if self.play_state.demo_phase == "DONE":
+            self.is_waiting_next = True
+            self.demo_wait_timer = 0
 
     def draw(self, surface):
         if self.manager.app.bg_image:
@@ -62,10 +110,14 @@ class AttractState(State):
         else:
             surface.fill(COLOR_BLACK)
 
-        text = self.font.render("ATTRACT MODE", True, COLOR_WHITE)
-        rect = text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
+        # PlayStateに描画させる
+        self.play_state.draw(surface)
+
+        # "DEMO PLAY" 表示 (PlayStateの上に重ねる)
+        text = self.font.render("DEMO PLAY", True, COLOR_WHITE)
+        rect = text.get_rect(topleft=(20, 20))
         surface.blit(text, rect)
 
         sub = self.sub_font.render("Move Mouse to Start", True, COLOR_GRAY)
-        sub_rect = sub.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50))
+        sub_rect = sub.get_rect(midbottom=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50))
         surface.blit(sub, sub_rect)

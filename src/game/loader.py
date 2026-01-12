@@ -25,3 +25,19 @@ class StageLoader:
             return data
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON format in {path}: {e}")
+
+    def get_available_levels(self) -> list[int]:
+        """利用可能なステージレベルのリストを取得"""
+        levels = []
+        if not os.path.exists(self.stages_dir):
+            return levels
+
+        for filename in os.listdir(self.stages_dir):
+            if filename.endswith(".json"):
+                # "1.json" -> 1
+                basename = os.path.splitext(filename)[0]
+                if basename.isdigit():
+                    levels.append(int(basename))
+
+        levels.sort()
+        return levels
