@@ -26,6 +26,16 @@ class GameApp:
         self.state_machine = StateMachine(self)
         self.running = True
 
+        # BGM再生
+        bgm_path = os.path.join("sound", "BGM.mp3")
+        if os.path.exists(bgm_path):
+            try:
+                pygame.mixer.music.load(bgm_path)
+                pygame.mixer.music.set_volume(0.3)
+                pygame.mixer.music.play(-1)
+            except Exception as e:
+                print(f"Error loading BGM: {e}")
+
         # 背景画像の読み込み
         self.bg_image = None
         bg_path = os.path.join("img", "bg.png")

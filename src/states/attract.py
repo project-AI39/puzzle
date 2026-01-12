@@ -6,6 +6,7 @@
 import pygame
 import math
 import random
+import os
 from src.core.state_machine import State
 from src.const import (
     SCREEN_WIDTH,
@@ -35,10 +36,22 @@ class AttractState(State):
         self.demo_wait_timer = 0
         self.is_waiting_next = False
 
+        # アトラクト音声
+        self.attract_voice = None
+        voice_path = os.path.join("sound", "遊んでね.mp3")
+        if os.path.exists(voice_path):
+            try:
+                self.attract_voice = pygame.mixer.Sound(voice_path)
+            except Exception as e:
+                print(f"Error loading attract voice: {e}")
+
+        self.voice_timer = 0
+
     def enter(self):
         print("アトラクトモード(Delegated to PlayState)に遷移しました")
         self.accumulated_move = 0.0
         self.last_mouse_pos = pygame.mouse.get_pos()
+        self.voice_timer = 0
         self._start_new_demo()
 
     def _start_new_demo(self):
@@ -89,6 +102,13 @@ class AttractState(State):
                 self.manager.change_state(DevState(self.manager))
 
     def update(self, dt):
+        # 定期音声再生 (10秒ごと)
+        if self.attract_voice:
+            self.voice_timer += dt
+            if self.voice_timer >= 10000:  # 10秒
+                self.attract_voice.play()
+                self.voice_timer = 0
+
         # デモ終了待ち
         if self.is_waiting_next:
             self.demo_wait_timer += dt
