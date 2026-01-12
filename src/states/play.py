@@ -64,6 +64,9 @@ class PlayState(State):
         self.show_guide = False
         self.guide_timer = 0
 
+        # ライフ
+        self.lives = 5
+
         # デモモード用
         self.is_demo = False
         self.demo_phase = "IDLE"
@@ -335,6 +338,7 @@ class PlayState(State):
 
                         if next_level in available_levels:
                             self.current_level = next_level
+                            self.lives = 5  # ステージクリアでライフ回復
                             self.enter()
                         else:
                             # 全ステージクリア -> ゲームクリア画面へ
@@ -343,24 +347,39 @@ class PlayState(State):
                             self.manager.change_state(GameClearState(self.manager))
                         return
                     elif self.sim_last_result == "LOSE":
-                        print("Example Failed... Resetting.")
+                        self.lives -= 1
+                        print(f"Failed... Lives left: {self.lives}")
 
-                        if self.custom_stage_data:
-                            # テストプレイで失敗 -> 開発者モードに戻る
-                            from src.states.dev import DevState
+                        if self.lives <= 0:
+                            # ゲームオーバー
+                            from src.states.game_over import GameOverState
 
-                            print("Test Play Failed! Returning to Dev Mode.")
+                            if self.custom_stage_data:
+                                # テストプレイ -> DevStateへ戻る
+                                from src.states.dev import DevState
+
+                                next_class = DevState
+                                next_args = {"initial_data": self.custom_stage_data}
+                            else:
+                                # 通常プレイ -> タイトルへ
+                                from src.states.attract import AttractState
+
+                                next_class = AttractState
+                                next_args = {}
+
                             self.manager.change_state(
-                                DevState(
-                                    self.manager, initial_data=self.custom_stage_data
+                                GameOverState(
+                                    self.manager,
+                                    next_state_class=next_class,
+                                    next_state_args=next_args,
                                 )
                             )
                             return
-
-                        # テストプレイで失敗（答え再生なのに失敗？）
-                        # まあリセットして再試行できるようにenter()を呼ぶ
-                        self.enter()
-                        return
+                        else:
+                            # リトライ（ライフ維持）
+                            print("Resetting for retry...")
+                            self.enter()
+                            return
 
                 # 次のステップへ
                 self.sim_timer = 0
@@ -453,6 +472,10 @@ class PlayState(State):
         # レベル表示 (左上)
         level_text = self.font.render(f"Level {self.current_level}", True, COLOR_WHITE)
         surface.blit(level_text, (20, 20))
+
+        # ライフ表示
+        lives_text = self.font.render(f"Lives: {self.lives}", True, COLOR_WHITE)
+        surface.blit(lives_text, (20, 70))
 
         # 掴んでいる駒の描画 (カーソル追従)
         if self.held_piece:
@@ -554,7 +577,7 @@ class PlayState(State):
 
         # 結果表示オーバーレイ
         if self.result_timer > 0 and self.sim_last_result in ["WIN", "LOSE"]:
-            text = "クリア" if self.sim_last_result == "WIN" else "失敗、リセット"
+            text = "CLEAR!" if self.sim_last_result == "WIN" else "FAILED..."
             color = (255, 255, 0) if self.sim_last_result == "WIN" else (255, 0, 0)
 
             cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2

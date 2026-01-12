@@ -26,7 +26,7 @@ STATE_CONFIRM = "CONFIRM"
 STATE_DEV = "DEV"
 
 # タイマー設定 (ミリ秒)
-TITLE_WAIT_TIME = 3000  # タイトル画面の表示時間 (3秒)
+TITLE_WAIT_TIME = 1000  # タイトル画面の表示時間 (1秒)
 PLAY_TIMEOUT = 60000  # プレイ中の無操作タイムアウト (1分)
 CONFIRM_TIMEOUT = 10000  # コンティニュー確認のタイムアウト (10秒)
 MOUSE_MOVE_THRESHOLD = 100  # マウス移動検知の閾値 (ピクセル移動量の累積など)
