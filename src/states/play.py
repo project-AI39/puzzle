@@ -18,6 +18,7 @@ from src.const import (
     SIM_ANIM_DURATION,
     TILE_SIZE,
     INVENTORY_WIDTH,
+    SIMULATION_TIMEOUT,
 )
 from src.game.loader import StageLoader
 from src.game.map import TileMap
@@ -244,6 +245,7 @@ class PlayState(State):
         self.game_state = GAME_STATE_SIMULATING
         self.simulator = Simulator(self.tile_map.map_data, self.tile_map.placed_pieces)
         self.sim_timer = SIM_STEP_DELAY  # 即座に最初のステップを実行させるため
+        self.sim_elapsed_time = 0
         self.sim_last_result = "CONTINUE"
         # 初期座標を記録
         self.prev_player_positions = [
@@ -304,6 +306,16 @@ class PlayState(State):
         # シミュレーション更新
         if self.game_state == GAME_STATE_SIMULATING:
             self.sim_timer += dt
+            self.sim_elapsed_time += dt
+
+            # タイムアウトチェック
+            if (
+                self.sim_elapsed_time >= SIMULATION_TIMEOUT
+                and self.sim_last_result == "CONTINUE"
+            ):
+                print("Simulation Timed Out! Force LOSE.")
+                self.sim_last_result = "LOSE"
+                self.sim_timer = SIM_STEP_DELAY  # 強制的に結果処理へ
 
             if self.sim_timer >= SIM_STEP_DELAY:
                 # 前回の結果判定をここで行う（アニメーション終了後）
