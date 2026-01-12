@@ -29,6 +29,12 @@ class PlayState(State):
     def __init__(self, manager, stage_data=None):
         super().__init__(manager)
         self.font = pygame.font.SysFont("Arial", 48)
+
+        # 結果表示用
+        self.result_font = pygame.font.SysFont("MS Gothic", 64, bold=True)
+        self.result_timer = 0
+        self.result_duration = 1000  # 1秒
+
         self.inactivity_timer = 0
         self.last_mouse_pos = None
 
@@ -62,6 +68,7 @@ class PlayState(State):
         self.is_demo = False
         self.demo_phase = "IDLE"
         self.demo_timer = 0
+        self.demo_wait_timer = 0  # デモ用ウェイト
 
     def enter(self):
         print("プレイモードに遷移しました")
@@ -73,6 +80,7 @@ class PlayState(State):
         self.game_state = GAME_STATE_PLACING
         self.simulator = None
         self.sim_timer = 0
+        self.result_timer = 0  # 初期化
 
         self.show_guide = False
         self.guide_timer = 0
@@ -133,6 +141,7 @@ class PlayState(State):
         self.game_state = GAME_STATE_PLACING
         self.simulator = None
         self.sim_timer = 0
+        self.result_timer = 0  # 初期化
         self.show_guide = False  # デモ中ガイドは不要
 
         try:
@@ -295,38 +304,50 @@ class PlayState(State):
 
             if self.sim_timer >= SIM_STEP_DELAY:
                 # 前回の結果判定をここで行う（アニメーション終了後）
-                if self.sim_last_result == "WIN":
-                    print(f"Level {self.current_level} Cleared!")
+                if self.sim_last_result in ["WIN", "LOSE"]:
+                    # 結果表示ウェイト
+                    if self.result_timer == 0:
+                        self.result_timer = self.result_duration
+                        return  # 1秒待機開始
 
-                    if self.custom_stage_data:
-                        # テストプレイ完了 -> 開発者モードに戻る
-                        from src.states.dev import DevState
+                    self.result_timer -= dt
+                    if self.result_timer > 0:
+                        return  # 待機中
 
-                        print("Test Play Cleared! Returning to Dev Mode.")
-                        self.manager.change_state(
-                            DevState(self.manager, initial_data=self.custom_stage_data)
-                        )
+                    if self.sim_last_result == "WIN":
+                        print(f"Level {self.current_level} Cleared!")
+
+                        if self.custom_stage_data:
+                            # テストプレイ完了 -> 開発者モードに戻る
+                            from src.states.dev import DevState
+
+                            print("Test Play Cleared! Returning to Dev Mode.")
+                            self.manager.change_state(
+                                DevState(
+                                    self.manager, initial_data=self.custom_stage_data
+                                )
+                            )
+                            return
+
+                        # 次のレベルがあるか確認
+                        next_level = self.current_level + 1
+                        available_levels = self.loader.get_available_levels()
+
+                        if next_level in available_levels:
+                            self.current_level = next_level
+                            self.enter()
+                        else:
+                            # 全ステージクリア -> ゲームクリア画面へ
+                            from src.states.game_clear import GameClearState
+
+                            self.manager.change_state(GameClearState(self.manager))
                         return
-
-                    # 次のレベルがあるか確認
-                    next_level = self.current_level + 1
-                    available_levels = self.loader.get_available_levels()
-
-                    if next_level in available_levels:
-                        self.current_level = next_level
+                    elif self.sim_last_result == "LOSE":
+                        print("Example Failed... Resetting.")
+                        # テストプレイで失敗（答え再生なのに失敗？）
+                        # まあリセットして再試行できるようにenter()を呼ぶ
                         self.enter()
-                    else:
-                        # 全ステージクリア -> ゲームクリア画面へ
-                        from src.states.game_clear import GameClearState
-
-                        self.manager.change_state(GameClearState(self.manager))
-                    return
-                elif self.sim_last_result == "LOSE":
-                    print("Example Failed... Resetting.")
-                    # テストプレイで失敗（答え再生なのに失敗？）
-                    # まあリセットして再試行できるようにenter()を呼ぶ
-                    self.enter()
-                    return
+                        return
 
                 # 次のステップへ
                 self.sim_timer = 0
@@ -517,3 +538,20 @@ class PlayState(State):
                     if img:
                         rect = img.get_rect(center=(cur_x, cur_y))
                         surface.blit(img, rect)
+
+        # 結果表示オーバーレイ
+        if self.result_timer > 0 and self.sim_last_result in ["WIN", "LOSE"]:
+            text = "クリア" if self.sim_last_result == "WIN" else "失敗、リセット"
+            color = (255, 255, 0) if self.sim_last_result == "WIN" else (255, 0, 0)
+
+            cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
+
+            # 影
+            shadow = self.result_font.render(text, True, COLOR_BLACK)
+            sh_rect = shadow.get_rect(center=(cx + 2, cy + 2))
+            surface.blit(shadow, sh_rect)
+
+            # 本体
+            surf = self.result_font.render(text, True, color)
+            rect = surf.get_rect(center=(cx, cy))
+            surface.blit(surf, rect)
